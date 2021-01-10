@@ -1,0 +1,32 @@
+/*
+Common API elements for GRPC helper interfaces
+*/
+syntax = "proto3";
+
+/*
+Common result codes
+*/
+enum ResultCode {
+    OK = 0;     // All good
+    ERROR = 1;  // Unspecified error
+
+    // RPC errors
+    ERROR_PORT_BUSY = 4;            // Server can't start because port is not available
+    ERROR_API_CLIENT_TOO_OLD = 5;   // Client API version is too old for this server
+    ERROR_API_SERVER_TOO_OLD = 6;   // Client API version is too recent for this server
+    ERROR_RPC = 7;                  // Inner RPC error
+}
+
+/*
+Return message and code, used as return status by all methods
+*/
+message Result {
+    ResultCode code = 1;    // Operation result code
+    string msg = 2;         // Operation result/progress message
+    string stack = 3;       // Exception stacktrace in case of error
+}
+
+/*
+Shared empty message (for operations without input parameters)
+*/
+message Empty {}

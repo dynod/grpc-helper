@@ -1,0 +1,25 @@
+# VS Code settings (should be generated)
+.vscode/
+
+# Python virtual env
+venv/
+
+# Python temporary files
+__pycache__
+*.pyc
+*.egg-info
+.pytest_cache/
+
+# All outputs
+out/
+
+# Coverage
+.coverage
+
+# Generated code
+src/grpc_helper/api/
+src/tests/api/
+
+# Generated setup files
+/setup.cfg
+/setup.py

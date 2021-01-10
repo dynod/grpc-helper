@@ -1,0 +1,25 @@
+/*
+Sample test API based
+*/
+syntax = "proto3";
+import "grpc_helper/api/common.proto";
+
+/*
+API versions:
+When connecting, the client must check versions with the following rules:
+ - if its current version is greater than the server current one, the server is "too old" for that client
+ - if its current version is lower than the server minimum one, that client is "too old" for the server
+*/
+enum SampleApiVersion {
+    option allow_alias = true;
+    SAMPLE_API_UNKNOWN = 0;
+    SAMPLE_API_SUPPORTED = 1; // Minimum supported version for clients
+    SAMPLE_API_CURRENT = 1;   // Current version
+}
+
+// Sample service
+service SampleService {
+    rpc method1 (Empty) returns (Result);
+    rpc method2 (Empty) returns (Result);
+    rpc method3 (Empty) returns (Result);
+}
