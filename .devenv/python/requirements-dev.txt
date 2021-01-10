@@ -1,0 +1,2 @@
+# gRPC compilation tools
+grpcio-tools

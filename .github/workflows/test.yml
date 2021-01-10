@@ -1,0 +1,39 @@
+# Test workflow
+name: Tests
+on: push
+jobs:
+    test_job:
+        name: Test Job
+        runs-on: ubuntu-latest
+        steps:
+            - name: Setup workspace
+              uses: dynod/repo-checkout@1.3.2
+              with:
+                  url: https://github.com/dynod/workspace.git
+                  group: tools
+                  env: OUTPUT_ROOT=/github/workspace/out
+            - name: Run tests
+              uses: dynod/call-make@1.2.0
+              with:
+                  target: tests
+                  env: OUTPUT_ROOT=/github/workspace/out
+            - name: Archive Python distribution
+              uses: actions/upload-artifact@v1
+              with:
+                  name: dist
+                  path: out/artifacts/python
+            - name: Archive flake8 report
+              uses: actions/upload-artifact@v1
+              with:
+                  name: flake8 report
+                  path: out/flake-report
+            - name: Archive coverage report
+              uses: actions/upload-artifact@v1
+              with:
+                  name: coverage report
+                  path: out/coverage-report
+            - name: Archive tests report
+              uses: actions/upload-artifact@v1
+              with:
+                  name: tests logs and report
+                  path: out/tests

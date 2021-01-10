@@ -1,0 +1,38 @@
+/*
+Get service information
+*/
+syntax = "proto3";
+import "grpc_helper/api/common.proto";
+
+/*
+API versions:
+When connecting, the client must check versions with the following rules:
+ - if its current version is greater than the server current one, the server is "too old" for that client
+ - if its current version is lower than the server minimum one, that client is "too old" for the server
+*/
+enum InfoApiVersion {
+    option allow_alias = true;
+    INFO_API_UNKNOWN = 0;
+    INFO_API_SUPPORTED = 1; // Minimum supported version for clients
+    INFO_API_CURRENT = 1;   // Current version
+}
+
+// Service information message
+message ServiceInfo {
+    string name = 1;                    // Component name
+    string version = 2;                 // Component version
+    uint32 current_api_version = 3;     // Current RPC API version of the component
+    uint32 supported_api_version = 4;   // Minimum supported RPC API version of the component
+}
+
+// Composite service information message
+message MultiServiceInfo {
+    Result r = 1;                   // Operation result
+    repeated ServiceInfo items = 2; // Composition of service information messages
+}
+
+// Info service
+service InfoService {
+    // Get information
+    rpc get (Empty) returns (MultiServiceInfo);
+}
