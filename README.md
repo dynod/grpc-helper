@@ -1,6 +1,6 @@
 # grpc-helper
 
-![Tests](https://github.com/dynod/gprc-helper/workflows/Tests/badge.svg)
+![Tests](https://github.com/dynod/grpc-helper/workflows/Tests/badge.svg)
 
 Miscellaneous GRPC helpers (API versioning, retry, etc...)
 
