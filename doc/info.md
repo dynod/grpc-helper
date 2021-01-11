@@ -1,6 +1,6 @@
 # Info service
 
-The info service (defined in [info.proto](../protos/dynod_commons/api/info.proto)) allows to fetch information about available services for this RPC server.
+The info service (defined in [info.proto](../protos/grpc_helper/api/info.proto)) allows to fetch information about available services for this RPC server.
 
 
 ---
