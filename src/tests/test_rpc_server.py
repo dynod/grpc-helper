@@ -1,4 +1,10 @@
 import logging
+import os
+import signal
+import time
+from pathlib import Path
+from threading import Thread
+from typing import List
 
 import pytest
 from pytest_multilog import TestHelper
@@ -11,8 +17,13 @@ from tests.api.sample_pb2_grpc import SampleServiceServicer, SampleServiceStub, 
 
 
 class SampleServicer(SampleServiceServicer):
+    def __init__(self):
+        self.wait_a_bit = False
+
     def method1(self, request: Empty) -> Result:
         logging.info("In SampleServicer.method1!!!")
+        if self.wait_a_bit:
+            time.sleep(3)
         return Result()
 
     def method2(self, request: Empty) -> Result:
@@ -23,7 +34,8 @@ class SampleServicer(SampleServiceServicer):
 class TestRpcServer(TestHelper):
     @property
     def sample_register(self) -> list:
-        return [RpcServiceDescriptor(grpc_helper, SampleApiVersion, SampleServicer(), add_SampleServiceServicer_to_server)]
+        self.servicer = SampleServicer()
+        return [RpcServiceDescriptor(grpc_helper, SampleApiVersion, self.servicer, add_SampleServiceServicer_to_server)]
 
     @pytest.fixture
     def sample_server(self):
@@ -49,6 +61,46 @@ class TestRpcServer(TestHelper):
         # Normal call
         s = client.sample.method1(Empty())
         assert s.code == ResultCode.OK
+
+    def test_debug_dump(self, client):
+        # Tweak servicer to send debug signal to serving process
+        self.servicer.wait_a_bit = True
+
+        # Clean test files
+        def dump_files() -> List[Path]:
+            return list(Path("/tmp").glob("RpcServerDump-*.txt"))
+
+        previous_ones = dump_files()
+        if len(previous_ones):
+            for previous_one in previous_ones:
+                logging.warning(f"removing old file: {previous_one}")
+                previous_one.unlink()
+        previous_ones = dump_files()
+        assert len(previous_ones) == 0
+
+        # Normal call in separated thread
+        def call_method1():
+            s = client.sample.method1(Empty())
+            assert s.code == ResultCode.OK
+
+        t = Thread(target=call_method1)
+        t.start()
+        time.sleep(0.5)
+
+        # Fake a "dump thread" command
+        logging.warning(">> Sending signal")
+        os.kill(os.getpid(), signal.SIGUSR2)
+        logging.warning("<< Sending signal")
+
+        # Make sure we're done
+        t.join()
+
+        # Should be one and only one file
+        new_ones = dump_files()
+        assert len(new_ones) == 1
+        with new_ones[0].open("r") as f:
+            # Verify method call is present in dump
+            assert " >>> SampleService.method1 (Empty{})" in f.read()  # NOQA: P103
 
     def test_exceptions(self, client):
         # Error call
