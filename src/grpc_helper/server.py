@@ -1,8 +1,13 @@
+import faulthandler
 import inspect
 import logging
+import time
 import traceback
 from concurrent import futures
 from dataclasses import dataclass
+from pathlib import Path
+from signal import SIGUSR2, signal
+from threading import RLock, current_thread
 from types import ModuleType
 from typing import Callable, List, NoReturn
 
@@ -19,13 +24,19 @@ LOG = logging.getLogger(__name__)
 
 
 class RpcMethod:
-    def __init__(self, name: str, manager: object, return_type: object, info: ServiceInfo):
+    def __init__(self, name: str, manager: object, return_type: object, info: ServiceInfo, server: object):
         self.manager_method = getattr(manager, name)
         self.return_type = return_type
         self.info = info
+        self.server = server
 
     def __call__(self, request, context):
-        LOG.debug(trace_rpc(True, request, context=context))
+        # Remember call for debug dump
+        input_trace = trace_rpc(True, request, context=context)
+        logged_call = f"Thread 0x{current_thread().ident:016x} -- " + input_trace
+        with self.server.lock:
+            self.server.calls.append(logged_call)
+        LOG.debug(input_trace)
 
         try:
             # Verify API version
@@ -46,7 +57,7 @@ class RpcMethod:
             # Ok, delegate to manager
             result = self.manager_method(request)
 
-        except Exception as e:  # NOQA: B902
+        except Exception as e:
             # Something happened during the RPC execution
 
             # Extract RC if this was a known error
@@ -56,6 +67,9 @@ class RpcMethod:
             r = Result(code=rc, msg=str(e), stack="".join(traceback.format_tb(e.__traceback__)))
             result = r if self.return_type == Result else self.return_type(r=r)
 
+        # Forget call from debug dump
+        with self.server.lock:
+            self.server.calls.remove(logged_call)
         LOG.debug(trace_rpc(False, result, context=context))
         return result
 
@@ -68,7 +82,7 @@ class RpcServicer:
      * routes method to provided manager
     """
 
-    def __init__(self, manager: object, info: ServiceInfo):
+    def __init__(self, manager: object, info: ServiceInfo, server: object):
         # Filter on manager methods
         for n in filter(lambda x: not x.startswith("_") and callable(getattr(manager, x)), dir(manager)):
             method = getattr(manager, n)
@@ -77,7 +91,7 @@ class RpcServicer:
             # Only methods with declared return type + one input parameter
             if return_type != inspect._empty and len(sig.parameters) == 1:
                 LOG.debug(f" >> add method {n} (returns {return_type.__name__})")
-                setattr(self, n, RpcMethod(n, manager, return_type, info))
+                setattr(self, n, RpcMethod(n, manager, return_type, info, server))
             # Or methods coming from the parent stub
             elif return_type == inspect._empty and len(sig.parameters) == 2 and all(p in ["request", "context"] for p in sig.parameters.keys()):
                 LOG.debug(f" >> add stub method {n}")
@@ -115,6 +129,8 @@ class RpcServer(InfoServiceServicer):
 
     def __init__(self, port: int, descriptors: List[RpcServiceDescriptor]):
         self.__port = port
+        self.lock = RLock()
+        self.calls = []
         LOG.debug(f"Starting RPC server on port {self.__port}")
 
         # Create server instance
@@ -142,7 +158,7 @@ class RpcServer(InfoServiceServicer):
             self.__info.append(info)
 
             # Register servicer in RPC server
-            descriptor.register_method(RpcServicer(descriptor.manager, info), self.__server)
+            descriptor.register_method(RpcServicer(descriptor.manager, info, self), self.__server)
 
         # Setup port and start
         try:
@@ -153,6 +169,25 @@ class RpcServer(InfoServiceServicer):
             raise RpcException(msg, rc=ResultCode.ERROR_PORT_BUSY)
         self.__server.start()
         LOG.debug(f"RPC server started on port {self.__port}")
+
+        # Hook debug signal
+        signal(SIGUSR2, self.__dump_debug)
+
+    def __dump_debug(self, signum, frame):
+        """
+        Dumps current threads + pending RPC requests
+        """
+
+        # Prepare debug output
+        output = Path("/tmp") / f"RpcServerDump-{time.strftime('%Y%m%d%H%M%S')}.txt"
+        with output.open("w") as f:
+            # Dump threads
+            faulthandler.dump_traceback(f, all_threads=True)
+
+            # Dump pending calls
+            f.write("\n\nPending RPC calls:\n")
+            for call in list(self.calls):
+                f.write(f"{call}\n")
 
     def shutdown(self):
         """
