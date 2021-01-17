@@ -13,5 +13,5 @@ List known available services information.
 
 #### *Return*
 A **`MultiServiceInfo`** message, including information for each available service:
-* module name and version
+* "module.service" name and version
 * current and supported API version

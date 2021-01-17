@@ -16,17 +16,26 @@ The **`RpcServer`** class handles the lifecycle of a GRPC server. To initialize,
 
 The **`RpcServiceDescriptor`** class describes a given service to be hooked in a server instance. Its attributes are:
 * a Python module (from which name and version will be used for the InfoService items registration)
+* a service name (used for service identification in InfoService items, and for auto-client setup)
 * a version enum:
    * lowest value in the enum will be considered to be the minimum supported version for this service API
    * highest value in the enum will be considered to be the current version for this service API
 * a manager instance, to which all RPC calls will be delegated
 * the GRPC generated hooking method for this service
+* the GRPC generated client stub class
 
 The manager class must:
 * inherit from the GRPC generated servicer class, in order to use the default implementation if any of the service method is not implemented by this manager
 * for each implemented service method:
    * declare a single input parameter, which will be the input request
    * declare the return type
+
+A manager class can also inherit from **`RpcManager`** class, which provides some usefull features:
+* a **`load`** method, called by the server once all services are alive (typically to perform some internal initializations)
+* a **`shutdown`** method, called by the server once it is shutdown (typically to perform some internal finalization operations)
+* a **`logger`** instance, to be used for all logging inside this manager and dependencies
+* a **`lock`** instance, to be used to protect manager inner fields against reentrance
+* a **`client`** instance, initialized to the server own auto-client (see bellow)
 
 #### Lifecycle
 
@@ -52,12 +61,17 @@ name **RpcServerDump-YYYYMMDDhhmmss.txt** (with dump timestamp) in **/tmp** fold
 * all the live threads call stacks
 * all the pending RPC requests
 
+#### Auto-client
+
+An initialized RPC server instance provides an **`auto_client`** attribute, providing an **`RpcClient`** instance pointing on everything
+served by this server.
+
 #### Usage example
 
 ```python
 import my_package
 from my_package.api import MyStatus, MyConfig, MyApiVersion
-from my_package.api.my_pb2_grpc import add_MyServiceServicer_to_server, MyServiceServicer
+from my_package.api.my_pb2_grpc import add_MyServiceServicer_to_server, MyServiceServicer, MyServiceStub
 from grpc_helper import RpcServer, RpcServiceDescriptor
 
 class MySampleManager(MyServiceServicer):
@@ -69,7 +83,7 @@ class MySampleManager(MyServiceServicer):
 
 def start():
     # Create an RPC server on port 12345
-    srv = RpcServer(12345, [RpcServiceDescriptor(my_package, MyApiVersion, MySampleManager(), add_MyServiceServicer_to_server)])
+    srv = RpcServer(12345, [RpcServiceDescriptor(my_package, "my", MyApiVersion, MySampleManager(), add_MyServiceServicer_to_server, MyServiceStub)])
 
     # Server is running in its own thread; we need to wait forever (or for interruption event) here
     ...

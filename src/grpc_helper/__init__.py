@@ -16,6 +16,7 @@ except DistributionNotFound:  # pragma: no cover
 # Public RPC API
 from grpc_helper.client import RpcClient
 from grpc_helper.errors import RpcException
+from grpc_helper.manager import RpcManager
 from grpc_helper.server import RpcServer, RpcServiceDescriptor
 
-__all__ = ["RpcServer", "RpcServiceDescriptor", "RpcClient", "RpcException"]
+__all__ = ["RpcServer", "RpcServiceDescriptor", "RpcClient", "RpcException", "RpcManager"]

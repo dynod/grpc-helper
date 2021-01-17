@@ -19,7 +19,7 @@ enum InfoApiVersion {
 
 // Service information message
 message ServiceInfo {
-    string name = 1;                    // Component name
+    string name = 1;                    // Component and service name
     string version = 2;                 // Component version
     uint32 current_api_version = 3;     // Current RPC API version of the component
     uint32 supported_api_version = 4;   // Minimum supported RPC API version of the component
