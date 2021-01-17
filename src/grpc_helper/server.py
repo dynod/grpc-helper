@@ -7,17 +7,19 @@ from concurrent import futures
 from dataclasses import dataclass
 from pathlib import Path
 from signal import SIGUSR2, signal
-from threading import RLock, current_thread
+from threading import current_thread
 from types import ModuleType
-from typing import Callable, List, NoReturn
+from typing import Callable, List, NoReturn, TypeVar
 
 from google.protobuf.internal.enum_type_wrapper import EnumTypeWrapper
 from grpc import server
 
 import grpc_helper
 from grpc_helper.api import Empty, InfoApiVersion, MultiServiceInfo, Result, ResultCode, ServiceInfo
-from grpc_helper.api.info_pb2_grpc import InfoServiceServicer, add_InfoServiceServicer_to_server
+from grpc_helper.api.info_pb2_grpc import InfoServiceServicer, InfoServiceStub, add_InfoServiceServicer_to_server
+from grpc_helper.client import RpcClient
 from grpc_helper.errors import RpcException
+from grpc_helper.manager import RpcManager
 from grpc_helper.trace import trace_buffer, trace_rpc
 
 LOG = logging.getLogger(__name__)
@@ -105,18 +107,22 @@ class RpcServiceDescriptor:
 
     Attributes:
         module: python module providing the service
+        name: service name
         api_version: enum class holding the supported/current API versions
         manager: object instance to which delegating services requests
-        register_method: method to be called for service registration on the server instance
+        register_method: GRPC-generated method to be called for service registration on the server instance
+        client_stub: GRPC-generated class holding the service client stub
     """
 
     module: ModuleType
+    name: str
     api_version: EnumTypeWrapper
-    manager: object
+    manager: RpcManager
     register_method: Callable[[object, object], NoReturn]
+    client_stub: TypeVar
 
 
-class RpcServer(InfoServiceServicer):
+class RpcServer(InfoServiceServicer, RpcManager):
     """
     Wrapper to GRPC api to setup an RPC server.
 
@@ -128,8 +134,8 @@ class RpcServer(InfoServiceServicer):
     """
 
     def __init__(self, port: int, descriptors: List[RpcServiceDescriptor]):
+        super().__init__()
         self.__port = port
-        self.lock = RLock()
         self.calls = []
         LOG.debug(f"Starting RPC server on port {self.__port}")
 
@@ -138,19 +144,27 @@ class RpcServer(InfoServiceServicer):
         self.__server = server(futures.ThreadPoolExecutor(max_workers=30))
 
         # To be able to answer to "get info" rpc
-        all_descriptors = [RpcServiceDescriptor(grpc_helper, InfoApiVersion, self, add_InfoServiceServicer_to_server)]
+        self.descriptors = [RpcServiceDescriptor(grpc_helper, "info", InfoApiVersion, self, add_InfoServiceServicer_to_server, InfoServiceStub)]
 
         # Get servicers
-        all_descriptors.extend(descriptors)
+        self.descriptors.extend(descriptors)
+
+        # Prepare auto clients stubs map
+        stubs_map = {}
+        self.__client = None
 
         # Register everything
         self.__info = []
-        for descriptor in all_descriptors:
+        for descriptor in self.descriptors:
             # Build info for service
             versions = list(descriptor.api_version.values())
             versions.remove(0)
+            current_version = max(versions)
             info = ServiceInfo(
-                name=descriptor.module.__title__, version=descriptor.module.__version__, current_api_version=max(versions), supported_api_version=min(versions)
+                name=f"{descriptor.module.__title__}.{descriptor.name}",
+                version=descriptor.module.__version__,
+                current_api_version=current_version,
+                supported_api_version=min(versions),
             )
             LOG.debug(f"Registering service in RPC server: {descriptor.manager.__class__.__name__} -- {trace_buffer(info)}")
 
@@ -159,6 +173,9 @@ class RpcServer(InfoServiceServicer):
 
             # Register servicer in RPC server
             descriptor.register_method(RpcServicer(descriptor.manager, info, self), self.__server)
+
+            # Contribute to auto-client stubs map
+            stubs_map[descriptor.name] = (descriptor.client_stub, current_version)
 
         # Setup port and start
         try:
@@ -172,6 +189,20 @@ class RpcServer(InfoServiceServicer):
 
         # Hook debug signal
         signal(SIGUSR2, self.__dump_debug)
+
+        # Prepare auto-client
+        self.__client = RpcClient("localhost", self.__port, stubs_map, name="auto-client")
+
+        # Load all managers
+        for descriptor in filter(lambda d: hasattr(d.manager, "preload"), self.descriptors):
+            descriptor.manager.preload(self.__client)
+
+    @property
+    def auto_client(self):
+        """
+        An RPC client pointing to everything served by this server
+        """
+        return self.__client
 
     def __dump_debug(self, signum, frame):
         """
@@ -199,6 +230,10 @@ class RpcServer(InfoServiceServicer):
         self.__server.stop(None)
         self.__server.wait_for_termination()
         LOG.debug(f"RPC server shut down on port {self.__port}")
+
+        # Shutdown all managers
+        for descriptor in filter(lambda d: hasattr(d.manager, "shutdown") and not isinstance(d.manager, RpcServer), self.descriptors):
+            descriptor.manager.shutdown()
 
     def get(self, request: Empty) -> MultiServiceInfo:
         # Just build message from stored info

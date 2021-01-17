@@ -10,24 +10,31 @@ import pytest
 from pytest_multilog import TestHelper
 
 import grpc_helper
-from grpc_helper import RpcClient, RpcException, RpcServer, RpcServiceDescriptor
+from grpc_helper import RpcClient, RpcException, RpcManager, RpcServer, RpcServiceDescriptor
 from grpc_helper.api import Empty, InfoApiVersion, Result, ResultCode
 from tests.api import SampleApiVersion
 from tests.api.sample_pb2_grpc import SampleServiceServicer, SampleServiceStub, add_SampleServiceServicer_to_server
 
 
-class SampleServicer(SampleServiceServicer):
+class SampleServicer(SampleServiceServicer, RpcManager):
     def __init__(self):
+        super().__init__()
         self.wait_a_bit = False
 
     def method1(self, request: Empty) -> Result:
-        logging.info("In SampleServicer.method1!!!")
+        self.logger.info("In SampleServicer.method1!!!")
+
+        # Sleep if requested
         if self.wait_a_bit:
             time.sleep(3)
-        return Result()
+
+        # Use auto-client to access other services
+        s = self.client.info.get(Empty())
+
+        return Result(msg=f"Found info count: {len(s.items)}")
 
     def method2(self, request: Empty) -> Result:
-        logging.info("Raising error!!!")
+        self.logger.info("Raising error!!!")
         raise RpcException("sample error", rc=12)
 
 
@@ -35,7 +42,7 @@ class TestRpcServer(TestHelper):
     @property
     def sample_register(self) -> list:
         self.servicer = SampleServicer()
-        return [RpcServiceDescriptor(grpc_helper, SampleApiVersion, self.servicer, add_SampleServiceServicer_to_server)]
+        return [RpcServiceDescriptor(grpc_helper, "sample", SampleApiVersion, self.servicer, add_SampleServiceServicer_to_server, SampleServiceStub)]
 
     @pytest.fixture
     def sample_server(self):
@@ -43,15 +50,15 @@ class TestRpcServer(TestHelper):
         srv = RpcServer(self.rpc_port, self.sample_register)
 
         # Yield to test
-        yield
+        yield srv
 
         # Shutdown server
         srv.shutdown()
 
     @pytest.fixture
     def client(self, sample_server):
-        # Setup RPC client
-        yield RpcClient("127.0.0.1", self.rpc_port, {"sample": (SampleServiceStub, SampleApiVersion.SAMPLE_API_CURRENT)}, name="pytest")
+        # Use server auto-client
+        yield sample_server.auto_client
 
     @property
     def rpc_port(self) -> int:
@@ -61,6 +68,7 @@ class TestRpcServer(TestHelper):
         # Normal call
         s = client.sample.method1(Empty())
         assert s.code == ResultCode.OK
+        assert s.msg == "Found info count: 2"
 
     def test_debug_dump(self, client):
         # Tweak servicer to send debug signal to serving process
@@ -123,12 +131,12 @@ class TestRpcServer(TestHelper):
         s = client.info.get(Empty())
         assert len(s.items) == 2
         info = s.items[0]
-        assert info.name == grpc_helper.__title__
+        assert info.name == "grpc-helper.info"
         assert info.version == grpc_helper.__version__
         assert info.current_api_version == InfoApiVersion.INFO_API_CURRENT
         assert info.supported_api_version == InfoApiVersion.INFO_API_SUPPORTED
         info = s.items[1]
-        assert info.name == grpc_helper.__title__
+        assert info.name == "grpc-helper.sample"
         assert info.version == grpc_helper.__version__
         assert info.current_api_version == SampleApiVersion.SAMPLE_API_CURRENT
         assert info.supported_api_version == SampleApiVersion.SAMPLE_API_SUPPORTED
