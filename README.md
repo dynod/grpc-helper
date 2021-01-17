@@ -28,18 +28,29 @@ The manager class must:
    * declare a single input parameter, which will be the input request
    * declare the return type
 
-#### Behavior
+#### Lifecycle
 
 The RPC server will live its life in its own thread. When the application is about to terminate, it is advised to call the **`shutdown`** method
 in order to turn off the RPC server properly.
 
+#### Default services
+
 Note that the RPC server instance will automatically serves the [info service](doc/info.md), giving information about all installed services thanks to
 the provided descriptors.
+
+#### API version checks
 
 For requests received from the **`RpcClient`** implementation on a given service, the client api version is checked against the server "supported - current" 
 range for this service:
 * if the client version is older than the server supported version, the request will return a **`ResultCode.ERROR_API_CLIENT_TOO_OLD`** error
 * if the client version is newer than the server current version, the request will return a **`ResultCode.ERROR_API_SERVER_TOO_OLD`** error
+
+#### Debug
+
+The RPC server will hook to the USR2 signal for debug purpose. When receiving this signal, following debug information will be dumped in a file
+name **RpcServerDump-YYYYMMDDhhmmss.txt** (with dump timestamp) in **/tmp** folder:
+* all the live threads call stacks
+* all the pending RPC requests
 
 #### Usage example
 
