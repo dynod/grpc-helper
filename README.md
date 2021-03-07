@@ -44,7 +44,7 @@ in order to turn off the RPC server properly.
 
 #### Default services
 
-Note that the RPC server instance will automatically serves the [info service](https://github.com/dynod/grpc-helper/blob/main/doc/info.md),
+Note that the RPC server instance will automatically serves the [info service](https://github.com/dynod/grpc-helper-api/blob/main/doc/info.md),
 giving information about all installed services thanks to the provided descriptors.
 
 #### API version checks
