@@ -139,9 +139,9 @@ class RpcServer(InfoServiceServicer, RpcManager):
         self.calls = []
         LOG.debug(f"Starting RPC server on port {self.__port}")
 
-        # Create server instance
+        # Create server instance, disabling port reuse
         # TODO: add configuration item for parallel workers
-        self.__server = server(futures.ThreadPoolExecutor(max_workers=30))
+        self.__server = server(futures.ThreadPoolExecutor(max_workers=30), options=[("grpc.so_reuseport", 0)])
 
         # To be able to answer to "get info" rpc
         self.descriptors = [RpcServiceDescriptor(grpc_helper, "info", InfoApiVersion, self, add_InfoServiceServicer_to_server, InfoServiceStub)]

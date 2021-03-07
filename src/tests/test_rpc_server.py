@@ -118,10 +118,10 @@ class TestRpcServer(TestHelper):
         except RpcException as e:
             assert e.rc == 12
 
-    def test_server_forbidden_port(self):
-        # Try to use a system port
+    def test_server_busy(self, sample_server):
         try:
-            RpcServer(22, self.sample_register)
+            # Try to use the same port again
+            RpcServer(self.rpc_port, self.sample_register)
             raise AssertionError("Shouldn't get here")
         except RpcException as e:
             assert e.rc == ResultCode.ERROR_PORT_BUSY

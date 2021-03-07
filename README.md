@@ -44,8 +44,8 @@ in order to turn off the RPC server properly.
 
 #### Default services
 
-Note that the RPC server instance will automatically serves the [info service](doc/info.md), giving information about all installed services thanks to
-the provided descriptors.
+Note that the RPC server instance will automatically serves the [info service](https://github.com/dynod/grpc-helper/blob/main/doc/info.md),
+giving information about all installed services thanks to the provided descriptors.
 
 #### API version checks
 
@@ -121,7 +121,3 @@ def start():
     # Use API
     s: MyStatus = c.my.list(Empty())
 ```
-
-
-## GRPC API
-This module defines an [info service](doc/info.md) that can be used to fetch services/components information
