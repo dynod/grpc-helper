@@ -1,0 +1,4 @@
+# Public Config API
+from grpc_helper.config.cfg_manager import ConfigManager
+
+__all__ = ["ConfigManager"]
