@@ -2,6 +2,7 @@ import logging
 from threading import RLock
 
 from grpc_helper.client import RpcClient
+from grpc_helper.folders import Folders
 
 
 class RpcManager:
@@ -13,11 +14,13 @@ class RpcManager:
         # Prepare some shared attributes
         self.lock = RLock()
         self.client = None
+        self.folders = None
         self.logger = logging.getLogger(type(self).__name__)
 
-    def preload(self, client: RpcClient):
+    def preload(self, client: RpcClient, folders: Folders):
         # Remember client, and delegate loading to subclass
         self.client = client
+        self.folders = folders if folders is not None else Folders()
         self.load()
 
     def load(self):

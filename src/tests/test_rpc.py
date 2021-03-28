@@ -6,14 +6,12 @@ from pathlib import Path
 from threading import Thread
 from typing import List
 
-import pytest
-from pytest_multilog import TestHelper
-
 import grpc_helper
 from grpc_helper import RpcClient, RpcException, RpcManager, RpcServer, RpcServiceDescriptor
-from grpc_helper.api import Empty, InfoApiVersion, Result, ResultCode
+from grpc_helper.api import ConfigApiVersion, Empty, InfoApiVersion, Result, ResultCode
 from tests.api import SampleApiVersion
 from tests.api.sample_pb2_grpc import SampleServiceServicer, SampleServiceStub, add_SampleServiceServicer_to_server
+from tests.utils import TestUtils
 
 
 class SampleServicer(SampleServiceServicer, RpcManager):
@@ -38,37 +36,17 @@ class SampleServicer(SampleServiceServicer, RpcManager):
         raise RpcException("sample error", rc=12)
 
 
-class TestRpcServer(TestHelper):
+class TestRpcServer(TestUtils):
     @property
     def sample_register(self) -> list:
         self.servicer = SampleServicer()
         return [RpcServiceDescriptor(grpc_helper, "sample", SampleApiVersion, self.servicer, add_SampleServiceServicer_to_server, SampleServiceStub)]
 
-    @pytest.fixture
-    def sample_server(self):
-        # Start server
-        srv = RpcServer(self.rpc_port, self.sample_register)
-
-        # Yield to test
-        yield srv
-
-        # Shutdown server
-        srv.shutdown()
-
-    @pytest.fixture
-    def client(self, sample_server):
-        # Use server auto-client
-        yield sample_server.auto_client
-
-    @property
-    def rpc_port(self) -> int:
-        return 52100 + self.worker_index
-
     def test_server(self, client):
         # Normal call
         s = client.sample.method1(Empty())
         assert s.code == ResultCode.OK
-        assert s.msg == "Found info count: 2"
+        assert s.msg == "Found info count: 3"
 
     def test_debug_dump(self, client):
         # Tweak servicer to send debug signal to serving process
@@ -93,7 +71,7 @@ class TestRpcServer(TestHelper):
 
         t = Thread(target=call_method1)
         t.start()
-        time.sleep(0.5)
+        time.sleep(1)
 
         # Fake a "dump thread" command
         logging.warning(">> Sending signal")
@@ -129,13 +107,18 @@ class TestRpcServer(TestHelper):
     def test_get_info(self, client):
         # Try a "get info" call
         s = client.info.get(Empty())
-        assert len(s.items) == 2
+        assert len(s.items) == 3
         info = s.items[0]
         assert info.name == "grpc-helper.info"
         assert info.version == grpc_helper.__version__
         assert info.current_api_version == InfoApiVersion.INFO_API_CURRENT
         assert info.supported_api_version == InfoApiVersion.INFO_API_SUPPORTED
         info = s.items[1]
+        assert info.name == "grpc-helper.config"
+        assert info.version == grpc_helper.__version__
+        assert info.current_api_version == ConfigApiVersion.CONFIG_API_CURRENT
+        assert info.supported_api_version == ConfigApiVersion.CONFIG_API_SUPPORTED
+        info = s.items[2]
         assert info.name == "grpc-helper.sample"
         assert info.version == grpc_helper.__version__
         assert info.current_api_version == SampleApiVersion.SAMPLE_API_CURRENT

@@ -14,9 +14,11 @@ except DistributionNotFound:  # pragma: no cover
         __version__ = c.get("metadata", "version")
 
 # Public RPC API
+from grpc_helper.cli import RpcCliParser
 from grpc_helper.client import RpcClient
 from grpc_helper.errors import RpcException
+from grpc_helper.folders import Folders
 from grpc_helper.manager import RpcManager
 from grpc_helper.server import RpcServer, RpcServiceDescriptor
 
-__all__ = ["RpcServer", "RpcServiceDescriptor", "RpcClient", "RpcException", "RpcManager"]
+__all__ = ["RpcServer", "RpcServiceDescriptor", "RpcClient", "RpcException", "RpcManager", "Folders", "RpcCliParser"]
