@@ -23,6 +23,3 @@ src/tests/api/
 # Generated setup files
 /setup.cfg
 /setup.py
-
-# Linked APIs
-protos/
