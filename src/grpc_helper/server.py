@@ -9,20 +9,31 @@ from pathlib import Path
 from signal import SIGUSR2, signal
 from threading import current_thread
 from types import ModuleType
-from typing import Callable, List, NoReturn, TypeVar
+from typing import Callable, Dict, List, NoReturn, TypeVar
 
 from google.protobuf.internal.enum_type_wrapper import EnumTypeWrapper
 from grpc import server
 
 import grpc_helper
-from grpc_helper.api import Empty, InfoApiVersion, MultiServiceInfo, Result, ResultCode, ServiceInfo
+from grpc_helper.api import ConfigApiVersion, ConfigValidator, Empty, InfoApiVersion, MultiServiceInfo, Result, ResultCode, ServiceInfo
+from grpc_helper.api.config_pb2_grpc import ConfigServiceStub, add_ConfigServiceServicer_to_server
 from grpc_helper.api.info_pb2_grpc import InfoServiceServicer, InfoServiceStub, add_InfoServiceServicer_to_server
 from grpc_helper.client import RpcClient
+from grpc_helper.config.cfg_item import ConfigHolder, Config
+from grpc_helper.config.cfg_manager import ConfigManager
 from grpc_helper.errors import RpcException
+from grpc_helper.folders import Folders
 from grpc_helper.manager import RpcManager
 from grpc_helper.trace import trace_buffer, trace_rpc
 
 LOG = logging.getLogger(__name__)
+
+
+# Internal config
+class RpcStaticConfig(ConfigHolder):
+    MAX_WORKERS = Config(
+        name="rpc-max-workers", description="Maximum parallel RPC worker threads", default_value="30", validator=ConfigValidator.CONFIG_VALID_POS_INT
+    )
 
 
 class RpcMethod:
@@ -126,25 +137,49 @@ class RpcServer(InfoServiceServicer, RpcManager):
     """
     Wrapper to GRPC api to setup an RPC server.
 
-    Arguments:
+    Constructor arguments:
         port:
-            TCP port to be used by the RPC server.
+            TCP port to be listened by the RPC server (mandatory).
         descriptors:
-            list of service RpcServiceDescriptor instances.
+            list of service RpcServiceDescriptor instances (mandatory).
+        folders:
+            Folders class instance, holding the different level folders (default: None).
+        cli_config:
+            dict of string:string config item defaults provided on the command line (default: None).
+        static_items:
+            list of Config/ConfigHolder instances for static config items (default: None).
+        user_items:
+            list of Config/ConfigHolder instances for user config items (default: None).
     """
 
-    def __init__(self, port: int, descriptors: List[RpcServiceDescriptor]):
+    def __init__(
+        self,
+        port: int,
+        descriptors: List[RpcServiceDescriptor],
+        folders: Folders = None,
+        cli_config: Dict[str, str] = None,
+        static_items: List[Config] = None,
+        user_items: List[Config] = None,
+    ):
         super().__init__()
         self.__port = port
         self.calls = []
         LOG.debug(f"Starting RPC server on port {self.__port}")
 
-        # Create server instance, disabling port reuse
-        # TODO: add configuration item for parallel workers
-        self.__server = server(futures.ThreadPoolExecutor(max_workers=30), options=[("grpc.so_reuseport", 0)])
+        # Prepare config manager
+        # (by the way, add our own static items)
+        config_m = ConfigManager(folders, cli_config, (static_items + [RpcStaticConfig]) if static_items is not None else [RpcStaticConfig], user_items)
 
-        # To be able to answer to "get info" rpc
-        self.descriptors = [RpcServiceDescriptor(grpc_helper, "info", InfoApiVersion, self, add_InfoServiceServicer_to_server, InfoServiceStub)]
+        # Create server instance, disabling port reuse
+        self.__server = server(futures.ThreadPoolExecutor(max_workers=RpcStaticConfig.MAX_WORKERS.int_val), options=[("grpc.so_reuseport", 0)])
+
+        # Systematically add services:
+        # - to be able to answer to "get info" rpc
+        # - to handle remote user configuration update
+        self.descriptors = [
+            RpcServiceDescriptor(grpc_helper, "info", InfoApiVersion, self, add_InfoServiceServicer_to_server, InfoServiceStub),
+            RpcServiceDescriptor(grpc_helper, "config", ConfigApiVersion, config_m, add_ConfigServiceServicer_to_server, ConfigServiceStub),
+        ]
 
         # Get servicers
         self.descriptors.extend(descriptors)
@@ -195,7 +230,7 @@ class RpcServer(InfoServiceServicer, RpcManager):
 
         # Load all managers
         for descriptor in filter(lambda d: hasattr(d.manager, "preload"), self.descriptors):
-            descriptor.manager.preload(self.__client)
+            descriptor.manager.preload(self.__client, folders)
 
     @property
     def auto_client(self):
