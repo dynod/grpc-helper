@@ -7,8 +7,8 @@ from threading import Thread
 from typing import List
 
 import grpc_helper
-from grpc_helper import RpcClient, RpcException, RpcManager, RpcServer, RpcServiceDescriptor
-from grpc_helper.api import ConfigApiVersion, Empty, InfoApiVersion, Result, ResultCode
+from grpc_helper import Folders, RpcClient, RpcException, RpcManager, RpcServer, RpcServiceDescriptor
+from grpc_helper.api import ConfigApiVersion, Empty, InfoApiVersion, LoggerApiVersion, Result, ResultCode
 from tests.api import SampleApiVersion
 from tests.api.sample_pb2_grpc import SampleServiceServicer, SampleServiceStub, add_SampleServiceServicer_to_server
 from tests.utils import TestUtils
@@ -46,7 +46,7 @@ class TestRpcServer(TestUtils):
         # Normal call
         s = client.sample.method1(Empty())
         assert s.code == ResultCode.OK
-        assert s.msg == "Found info count: 3"
+        assert s.msg == "Found info count: 4"
 
     def test_debug_dump(self, client):
         # Tweak servicer to send debug signal to serving process
@@ -99,7 +99,7 @@ class TestRpcServer(TestUtils):
     def test_server_busy(self, sample_server):
         try:
             # Try to use the same port again
-            RpcServer(self.rpc_port, self.sample_register)
+            RpcServer(self.rpc_port, self.sample_register, folders=Folders(workspace=self.test_folder / "wks2"))
             raise AssertionError("Shouldn't get here")
         except RpcException as e:
             assert e.rc == ResultCode.ERROR_PORT_BUSY
@@ -107,7 +107,7 @@ class TestRpcServer(TestUtils):
     def test_get_info(self, client):
         # Try a "get info" call
         s = client.info.get(Empty())
-        assert len(s.items) == 3
+        assert len(s.items) == 4
         info = s.items[0]
         assert info.name == "grpc-helper.info"
         assert info.version == grpc_helper.__version__
@@ -119,6 +119,11 @@ class TestRpcServer(TestUtils):
         assert info.current_api_version == ConfigApiVersion.CONFIG_API_CURRENT
         assert info.supported_api_version == ConfigApiVersion.CONFIG_API_SUPPORTED
         info = s.items[2]
+        assert info.name == "grpc-helper.log"
+        assert info.version == grpc_helper.__version__
+        assert info.current_api_version == LoggerApiVersion.LOGGER_API_CURRENT
+        assert info.supported_api_version == LoggerApiVersion.LOGGER_API_SUPPORTED
+        info = s.items[3]
         assert info.name == "grpc-helper.sample"
         assert info.version == grpc_helper.__version__
         assert info.current_api_version == SampleApiVersion.SAMPLE_API_CURRENT

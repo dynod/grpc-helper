@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from pytest_multilog import TestHelper
 
@@ -9,13 +11,21 @@ class TestUtils(TestHelper):
     def rpc_port(self) -> int:
         return 52100 + self.worker_index
 
-    def new_server_instance(self, workspace: str = "wks"):
+    @property
+    def workspace_path(self) -> Path:
+        return self.test_folder / "wks"
+
+    @property
+    def folders(self) -> Folders:
+        return Folders(workspace=(self.workspace_path))
+
+    def new_server_instance(self, with_workspace: bool = True):
         # Create new server instance
         self.server = RpcServer(
             self.rpc_port,
             self.sample_register,
             user_items=self.user_items,
-            folders=Folders(workspace=(self.test_folder / workspace) if workspace is not None else None),
+            folders=self.folders if with_workspace else Folders(),
         )
 
     @pytest.fixture
@@ -32,7 +42,7 @@ class TestUtils(TestHelper):
     @pytest.fixture
     def client(self, sample_server):
         # Use server auto-client
-        yield sample_server.auto_client
+        yield sample_server.client
 
     @property
     def sample_register(self) -> list:

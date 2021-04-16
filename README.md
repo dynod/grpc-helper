@@ -58,14 +58,17 @@ in order to turn off the RPC server properly.
 Note that the RPC server instance will automatically serve:
 * the [info service](https://github.com/dynod/grpc-helper-api/blob/main/doc/info.md),
 giving information about all installed services thanks to the provided descriptors.
-* the [config service](https://github.com/dynod/grpc-helper-api/blob/main/doc/config.md), allowing to remotely get/update/reset user configuration items.
+* the [config service](https://github.com/dynod/grpc-helper-api/blob/main/doc/config.md),
+allowing to remotely get/update/reset user configuration items.
+* the [logger service](https://github.com/dynod/grpc-helper-api/blob/main/doc/logger.md),
+allowing to remotely get/update/reset loggers configuration.
 
 #### API version checks
 
 For requests received from the **`RpcClient`** implementation on a given service, the client api version is checked against the server "supported - current" 
 range for this service:
-* if the client version is older than the server supported version, the request will return a **`ResultCode.ERROR_API_CLIENT_TOO_OLD`** error
-* if the client version is newer than the server current version, the request will return a **`ResultCode.ERROR_API_SERVER_TOO_OLD`** error
+* if the client version is older than the server supported version, the request will raise a **`ResultCode.ERROR_API_CLIENT_TOO_OLD`** error
+* if the client version is newer than the server current version, the request will raise a **`ResultCode.ERROR_API_SERVER_TOO_OLD`** error
 
 #### Debug
 
@@ -79,12 +82,22 @@ name **RpcServerDump-YYYYMMDDhhmmss.txt** (with dump timestamp) in **/tmp** fold
 An initialized RPC server instance provides an **`auto_client`** attribute, providing an **`RpcClient`** instance pointing on everything
 served by this server.
 
+#### Rolling logs
+
+Each manager of the RPC server through its **`logger`** attribute, will have his logs persisted in a **\<name\>/\<name\>.log** rolling file (relative to the 
+logging folder). The complete logs will also be persisted in the **root** folder.
+Both logging folder and rollover cadency can be configured -- see **Configuration** chapter below.
+
 #### Configuration
 
 The RPC server behavior can be configured through the following static configuration items:
 Name | Description | Type | Default
 ---- | ----------- | ---- | -------
-**rpc-max-workers** | Maximum parallel RPC worker threads | **`CONFIG_VALID_POS_INT`** | 30
+**rpc-max-workers**        | Maximum parallel RPC worker threads                                 | Positive integer | **`30`**
+**rpc-logs-folder**        | Folder (absolute or workspace-relative) where to store rolling logs | String           | **`"logs"`**
+**rpc-logs-backup**        | Backup log files to be persisted for each manager on rollover       | Integer          | **`10`**
+**rpc-logs-interval-unit** | Logs rollover interval unit (see [TimedRotatingFileHandler documentation](https://docs.python.org/3/library/logging.handlers.html#logging.handlers.TimedRotatingFileHandler)) | Custom (see [doc](https://docs.python.org/3/library/logging.handlers.html#logging.handlers.TimedRotatingFileHandler)) | **`H`**
+**rpc-logs-interval**      | Logs rollover interval (see [TimedRotatingFileHandler documentation](https://docs.python.org/3/library/logging.handlers.html#logging.handlers.TimedRotatingFileHandler)) | Positive integer | **`1`**
 
 #### Usage example
 

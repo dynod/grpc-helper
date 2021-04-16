@@ -1,5 +1,3 @@
-import json
-import logging
 import os
 from pathlib import Path
 from typing import Dict, List
@@ -11,8 +9,6 @@ from grpc_helper.errors import RpcException
 from grpc_helper.folders import Folders
 from grpc_helper.manager import RpcManager
 
-LOG = logging.getLogger(__name__)
-
 # Config file name
 CONFIG_FILE = "config.json"
 
@@ -23,7 +19,7 @@ class ConfigManager(ConfigServiceServicer, RpcManager):
     """
 
     def __init__(self, folders: Folders = None, cli_config: Dict[str, str] = None, static_items: List[Config] = None, user_items: List[Config] = None):
-        RpcManager.__init__(self)
+        RpcManager.__init__(self, CONFIG_FILE, self.__validate_config_file)
         self.folders = folders if folders is not None else Folders()
         self.static_items = self.__serialize_items(static_items)
         self.user_items = self.__serialize_items(user_items)
@@ -36,7 +32,7 @@ class ConfigManager(ConfigServiceServicer, RpcManager):
 
         # Prepare default/current values dict
         defaults = self.__load_defaults()
-        currents = self.__load_config_file(self.folders.workspace)
+        currents = self._load_config(self.folders.workspace)
 
         # Load default/current values for all items
         for name, item in self.__all_items.items():
@@ -52,11 +48,18 @@ class ConfigManager(ConfigServiceServicer, RpcManager):
                     item.update(current_val)
                     continue
                 except Exception:
-                    self.logger.error(f"Can't load invalid persisted value '{current_val}' for config item {name}")
+                    self.logger.warning(f"Can't load invalid persisted value '{current_val}' for config item {name}; use default one")
 
             # Default (no persisted current value or validation error on persisted value)
             item.update(default_val)
-            LOG.debug(f"initialized item {name}: default {item.default_value} / current {item.str_val}")
+
+    def load(self):
+        # Simple dump of all loaded items
+        self.logger.info("Items dump on load:")
+        for item_type, name, item in [
+            (item_type, name, item) for item_type, item_map in [("static", self.static_items), ("user", self.user_items)] for name, item in item_map.items()
+        ]:
+            self.logger.info(f" - [{item_type}] {name}: {item.str_val} (default: {item.default_value})")
 
     def __serialize_items(self, input_list: list) -> Dict[str, Config]:
         # Browse input list items, that may be:
@@ -79,20 +82,9 @@ class ConfigManager(ConfigServiceServicer, RpcManager):
         out.update(self.user_items)
         return out
 
-    def __load_config_file(self, config_folder: Path) -> Dict[str, str]:
-        # Check config file presence
-        if config_folder is not None:
-            config_file = config_folder / CONFIG_FILE
-            if config_file.is_file():
-                with config_file.open("r") as f:
-                    # Load and verify model from json file
-                    json_model = json.load(f)
-                    if not isinstance(json_model, dict) or any(not isinstance(v, str) for v in json_model.values()):
-                        raise RpcException(f"Invalid config json file (expecting a simple str:str object): {config_file}", ResultCode.ERROR_MODEL_INVALID)
-                    return json_model
-
-        # No config file: empty model
-        return {}
+    def __validate_config_file(self, config_file: Path, json_model):
+        if not isinstance(json_model, dict) or any(not isinstance(v, str) for v in json_model.values()):
+            raise RpcException(f"Invalid config json file (expecting a simple str:str object): {config_file}", ResultCode.ERROR_MODEL_INVALID)
 
     def __load_env_config(self) -> Dict[str, str]:
         # Check if configuration item default value is provided by environment
@@ -107,32 +99,29 @@ class ConfigManager(ConfigServiceServicer, RpcManager):
     def __load_defaults(self) -> Dict[str, str]:
         # Layer 1: hard-coded values
         defaults = {i.name: i.hard_coded_default_value for i in self.__all_items.values()}
-        LOG.debug(f"Loading defaults (hard-coded): {defaults}")
+        self.logger.debug(f"Loading defaults (hard-coded): {defaults}")
 
         # Layer 2: system shared config file
-        defaults.update(self.__load_config_file(self.folders.system))
-        LOG.debug(f"Loading defaults (from system config at {self.folders.system}): {defaults}")
+        defaults.update(self._load_config(self.folders.system))
+        self.logger.debug(f"Loading defaults (from system config at {self.folders.system}): {defaults}")
 
         # Layer 3: user config file
-        defaults.update(self.__load_config_file(self.folders.user))
-        LOG.debug(f"Loading defaults (from user config at {self.folders.user}): {defaults}")
+        defaults.update(self._load_config(self.folders.user))
+        self.logger.debug(f"Loading defaults (from user config at {self.folders.user}): {defaults}")
 
         # Layer 4: environment
         defaults.update(self.__load_env_config())
-        LOG.debug(f"Loading defaults (from environment): {defaults}")
+        self.logger.debug(f"Loading defaults (from environment): {defaults}")
 
         # Layer 5: command-line
         defaults.update(self.cli_config)
-        LOG.debug(f"Loading defaults (from cli options): {defaults}")
+        self.logger.debug(f"Loading defaults (from cli options): {defaults}")
 
         return defaults
 
     def __persist(self):
-        # Persist non-default public values, if workspace is configured
-        if self.folders.workspace is not None:
-            to_write = {i.name: i.str_val for i in filter(lambda i: i.str_val != i.default_value, self.user_items.values())}
-            with (self.folders.workspace / CONFIG_FILE).open("w") as f:
-                json.dump(to_write, f, indent=4)
+        # Persist non-default public values
+        self._save_config({i.name: i.str_val for i in filter(lambda i: i.str_val != i.default_value, self.user_items.values())})
 
     def __check_items(self, input_names: list, empty_ok: bool):
         # Check for empty list
