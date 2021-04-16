@@ -3,6 +3,7 @@ import os
 import pwd
 import socket
 import time
+from logging import Logger
 
 from grpc import RpcError, StatusCode, insecure_channel
 
@@ -11,23 +12,22 @@ from grpc_helper.api.info_pb2_grpc import InfoServiceStub
 from grpc_helper.errors import RpcException
 from grpc_helper.trace import trace_rpc
 
-LOG = logging.getLogger(__name__)
-
 
 # Utility class to handle stub retry
 # i.e. permissive stub that allows server to be temporarily unavailable
 class RetryStub:
     class RetryMethod:
-        def __init__(self, name: str, stub, timeout: float, metadata: tuple):
+        def __init__(self, name: str, stub, timeout: float, metadata: tuple, logger: Logger):
             self.m_name = name
             self.s_name = stub.__class__.__name__
             self.stub = stub
             self.timeout = timeout
             self.metadata = metadata
+            self.logger = logger
 
         def __call__(self, request):
             trace = trace_rpc(True, request, method=f"{self.s_name}.{self.m_name}")
-            LOG.debug(trace)
+            self.logger.debug(trace)
             first_try = time.time()
 
             # Loop to handle retries
@@ -40,14 +40,14 @@ class RetryStub:
                     if e.code() == StatusCode.UNAVAILABLE and self.timeout is not None and (time.time() - first_try) < self.timeout:
                         # Server is not available, and timeout didn't expired yet: sleep and retry
                         time.sleep(0.5)
-                        LOG.debug(f"<RPC> >> {self.s_name}.{self.m_name}... (retry)")
+                        self.logger.debug(f"<RPC> >> {self.s_name}.{self.m_name}... (retry)")
                     else:
                         # Timed out or any other reason: raise exception
-                        LOG.error(f"<RPC> >> {self.s_name}.{self.m_name} error: {str(e)}")
+                        self.logger.error(f"<RPC> >> {self.s_name}.{self.m_name} error: {str(e)}")
                         raise RpcException(f"RPC error (on {trace}): {e}", rc=ResultCode.ERROR_RPC)
 
             trace = trace_rpc(False, result, method=f"{self.s_name}.{self.m_name}")
-            LOG.debug(trace)
+            self.logger.debug(trace)
             if (hasattr(result, "r") and isinstance(result.r, Result) and result.r.code != ResultCode.OK) or (
                 isinstance(result, Result) and result.code != ResultCode.OK
             ):
@@ -56,10 +56,10 @@ class RetryStub:
 
             return result
 
-    def __init__(self, real_stub, timeout: float, metadata: tuple):
+    def __init__(self, real_stub, timeout: float, metadata: tuple, logger: Logger):
         # Fake the stub methods
         for n in filter(lambda x: not x.startswith("__") and callable(getattr(real_stub, x)), dir(real_stub)):
-            setattr(self, n, RetryStub.RetryMethod(n, real_stub, timeout, metadata))
+            setattr(self, n, RetryStub.RetryMethod(n, real_stub, timeout, metadata, logger))
 
 
 class RpcClient:
@@ -78,14 +78,19 @@ class RpcClient:
             timeout for unreachable server (in seconds; default: 60)
         name:
             client name, which will appear in server logs
+        logger:
+            Logger instance to be used when logging calls
     """
 
-    def __init__(self, host: str, port: int, stubs_map: dict, timeout: float = 60, name: str = ""):
+    def __init__(self, host: str, port: int, stubs_map: dict, timeout: float = 60, name: str = "", logger: Logger = None):
         # Prepare metadata for RPC calls
         shared_metadata = [("client", name), ("user", self.get_user()), ("host", socket.gethostname()), ("ip", self.get_ip())]
 
+        # Prepare logger
+        self.logger = logger if logger is not None else logging.getLogger("RpcClient")
+
         # Create channel
-        LOG.debug(f"Initializing RPC client for {host}:{port}")
+        self.logger.debug(f"Initializing RPC client for {host}:{port}")
         channel = insecure_channel(f"{host}:{port}")
 
         # Handle stubs hooking
@@ -96,10 +101,10 @@ class RpcClient:
             metadata = list(shared_metadata)
             if ver is not None:
                 metadata.append(("api_version", str(ver)))
-            LOG.debug(f"Adding {name} stub to client (api version: {ver})")
-            setattr(self, name, RetryStub(typ(channel), timeout, tuple(metadata)))
+            self.logger.debug(f" >> adding {name} stub to client (api version: {ver})")
+            setattr(self, name, RetryStub(typ(channel), timeout, tuple(metadata), self.logger))
 
-        LOG.debug(f"RPC client ready for {host}:{port}")
+        self.logger.debug(f"RPC client ready for {host}:{port}")
 
     def get_ip(self):
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

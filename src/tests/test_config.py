@@ -6,7 +6,8 @@ import pytest
 
 from grpc_helper import Folders, RpcException
 from grpc_helper.api import ConfigItemUpdate, ConfigUpdate, ConfigValidator, Filter, ResultCode
-from grpc_helper.config import ConfigHolder, Config, ConfigManager
+from grpc_helper.config import Config, ConfigHolder
+from grpc_helper.config.cfg_manager import ConfigManager
 from grpc_helper.server import RpcStaticConfig
 from tests.utils import TestUtils
 
@@ -49,7 +50,7 @@ class TestConfig(TestUtils):
     def test_invalid_config_name(self):
         try:
             # Invalid config name
-            ConfigManager(static_items=[Config(name="WithCapitals")])
+            ConfigManager(folders=self.folders, static_items=[Config(name="WithCapitals")])
             raise AssertionError("Shouldn't get here")
         except RpcException as e:
             assert e.rc == ResultCode.ERROR_PARAM_INVALID
@@ -57,20 +58,20 @@ class TestConfig(TestUtils):
     def test_missing_custom_validator(self):
         try:
             # Missing custom validator in config definition
-            ConfigManager(static_items=[Config(name="ok", validator=ConfigValidator.CONFIG_VALID_CUSTOM)])
+            ConfigManager(folders=self.folders, static_items=[Config(name="ok", validator=ConfigValidator.CONFIG_VALID_CUSTOM)])
             raise AssertionError("Shouldn't get here")
         except RpcException as e:
             assert e.rc == ResultCode.ERROR_PARAM_MISSING
 
     def test_empty_default(self):
         # Config item with empty default
-        cm = ConfigManager(static_items=[Config(name="ok", can_be_empty=True)])
+        cm = ConfigManager(folders=self.folders, static_items=[Config(name="ok", can_be_empty=True)])
         assert cm.static_items["ok"].str_val == ""
 
     def test_pos_int_validation(self):
         try:
             # Negative integer while expecting a positive one
-            ConfigManager(static_items=[Config(name="some-pos-int", validator=ConfigValidator.CONFIG_VALID_POS_INT, default_value="-69")])
+            ConfigManager(folders=self.folders, static_items=[Config(name="some-pos-int", validator=ConfigValidator.CONFIG_VALID_POS_INT, default_value="-69")])
             raise AssertionError("Shouldn't get here")
         except RpcException as e:
             assert e.rc == ResultCode.ERROR_PARAM_INVALID
@@ -80,46 +81,50 @@ class TestConfig(TestUtils):
 
     def test_string_validation(self):
         # Default string validation
-        ConfigManager(static_items=[Config(name="some-string", default_value="Any default is OK")])
+        ConfigManager(folders=self.folders, static_items=[Config(name="some-string", default_value="Any default is OK")])
 
     def test_hard_coded_default(self):
         # A simple config manager
-        ConfigManager(static_items=[SampleConfig])
+        ConfigManager(folders=self.folders, static_items=[SampleConfig])
 
         # Check default value
         assert SampleConfig.INT_ITEM.int_val == 12
 
     def test_system_default(self, system_config):
         # A simple config manager
-        ConfigManager(static_items=[SampleConfig], folders=Folders(system=system_config))
+        ConfigManager(static_items=[SampleConfig], folders=Folders(workspace=self.workspace_path, system=system_config))
 
         # Check default value
         assert SampleConfig.INT_ITEM.int_val == -78
 
     def test_user_default(self, system_config, user_config):
         # A simple config manager
-        ConfigManager(static_items=[SampleConfig], folders=Folders(system=system_config, user=user_config))
+        ConfigManager(static_items=[SampleConfig], folders=Folders(workspace=self.workspace_path, system=system_config, user=user_config))
 
         # Check default value
         assert SampleConfig.INT_ITEM.int_val == 1024
 
     def test_env_default(self, system_config, user_config, env_config):
         # A simple config manager
-        ConfigManager(static_items=[SampleConfig], folders=Folders(system=system_config, user=user_config))
+        ConfigManager(static_items=[SampleConfig], folders=Folders(workspace=self.workspace_path, system=system_config, user=user_config))
 
         # Check default value
         assert SampleConfig.INT_ITEM.int_val == 456
 
     def test_cli_default(self, system_config, user_config, env_config):
         # A simple config manager
-        ConfigManager(static_items=[SampleConfig], folders=Folders(system=system_config, user=user_config), cli_config={"my-int-config": "357"})
+        ConfigManager(
+            static_items=[SampleConfig],
+            folders=Folders(workspace=self.workspace_path, system=system_config, user=user_config),
+            cli_config={"my-int-config": "357"},
+        )
 
         # Check default value
         assert SampleConfig.INT_ITEM.int_val == 357
 
     def test_folder_without_file_default(self):
         # A simple config manager -- shouldn't be disturbed is folder is non-null, but no config file inside
-        ConfigManager(static_items=[SampleConfig], folders=Folders(system=Path("/missing/folder")))
+        ConfigManager(static_items=[SampleConfig], folders=Folders(workspace=self.workspace_path, system=Path("/missing/folder")))
 
         # Check default value
         assert SampleConfig.INT_ITEM.int_val == 12
@@ -127,9 +132,9 @@ class TestConfig(TestUtils):
     def test_invalid_json_model(self, system_config):
         # Dump non-object Json in config
         with (system_config / "config.json").open("w") as f:
-            json.dump("", f)
+            f.write('{"unclosed item')
         try:
-            ConfigManager(static_items=[SampleConfig], folders=Folders(system=system_config))
+            ConfigManager(static_items=[SampleConfig], folders=Folders(workspace=self.workspace_path, system=system_config))
             raise AssertionError("Shouldn't get here")
         except RpcException as e:
             assert e.rc == ResultCode.ERROR_MODEL_INVALID
@@ -138,7 +143,7 @@ class TestConfig(TestUtils):
         with (system_config / "config.json").open("w") as f:
             json.dump({"some-int": 45}, f)
         try:
-            ConfigManager(static_items=[SampleConfig], folders=Folders(system=system_config))
+            ConfigManager(static_items=[SampleConfig], folders=Folders(workspace=self.workspace_path, system=system_config))
             raise AssertionError("Shouldn't get here")
         except RpcException as e:
             assert e.rc == ResultCode.ERROR_MODEL_INVALID
@@ -146,7 +151,7 @@ class TestConfig(TestUtils):
     def test_conflicting_configs(self):
         # Try with some conflicting items between statis and user lists
         try:
-            ConfigManager(static_items=[SampleConfig], user_items=[Config(name="my-int-config", default_value="zzz")])
+            ConfigManager(folders=self.folders, static_items=[SampleConfig], user_items=[Config(name="my-int-config", default_value="zzz")])
             raise AssertionError("Shouldn't get here")
         except RpcException as e:
             assert e.rc == ResultCode.ERROR_MODEL_INVALID
@@ -154,7 +159,7 @@ class TestConfig(TestUtils):
     def test_invalid_default(self):
         # Try with invalid default value
         try:
-            ConfigManager(static_items=[SampleConfig], cli_config={"my-int-config": "zzz"})
+            ConfigManager(folders=self.folders, static_items=[SampleConfig], cli_config={"my-int-config": "zzz"})
             raise AssertionError("Shouldn't get here")
         except RpcException as e:
             assert e.rc == ResultCode.ERROR_PARAM_INVALID
@@ -249,9 +254,10 @@ class TestConfig(TestUtils):
         assert item.name == "my-int-config"
         assert item.value == "999"
 
-        # Reload to verify ignored persistence if no workspace
+        # Reload to verify ignored persistence if no workspace (but update logs folder anyway)
         self.server.shutdown()
-        self.new_server_instance(workspace=None)
+        os.environ["RPC_LOGS_FOLDER"] = (self.test_folder / "custom_log_full_path").as_posix()
+        self.new_server_instance(with_workspace=False)
         cfg.unlink()
 
         # Set new value; will not be persisted
@@ -262,8 +268,9 @@ class TestConfig(TestUtils):
         with cfg.open("w") as f:
             json.dump({"my-int-config": "invalid string"}, f)
 
-        # Reload to verify invalid value being ignored
+        # Reload to verify invalid value being ignored (and restore default logs folder)
         self.server.shutdown()
+        del os.environ["RPC_LOGS_FOLDER"]
         self.new_server_instance()
         self.check_logs("Can't load invalid persisted value 'invalid string' for config item my-int-config")
 
