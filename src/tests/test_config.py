@@ -68,6 +68,29 @@ class TestConfig(TestUtils):
         cm = ConfigManager(folders=self.folders, static_items=[Config(name="ok", can_be_empty=True)])
         assert cm.static_items["ok"].str_val == ""
 
+    def test_float_validation(self):
+        try:
+            # Non-float value
+            ConfigManager(
+                folders=self.folders, static_items=[Config(name="some-float", validator=ConfigValidator.CONFIG_VALID_FLOAT, default_value="not a float")]
+            )
+            raise AssertionError("Shouldn't get here")
+        except RpcException as e:
+            assert e.rc == ResultCode.ERROR_PARAM_INVALID
+
+    def test_pos_float_validation(self):
+        try:
+            # Negative float while expecting a positive one
+            ConfigManager(
+                folders=self.folders, static_items=[Config(name="some-pos-float", validator=ConfigValidator.CONFIG_VALID_POS_FLOAT, default_value="-69.45")]
+            )
+            raise AssertionError("Shouldn't get here")
+        except RpcException as e:
+            assert e.rc == ResultCode.ERROR_PARAM_INVALID
+
+        # Same with correct default value
+        ConfigManager(static_items=[Config(name="some-pos-float", validator=ConfigValidator.CONFIG_VALID_POS_FLOAT, default_value="69.45")])
+
     def test_pos_int_validation(self):
         try:
             # Negative integer while expecting a positive one

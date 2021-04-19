@@ -53,6 +53,7 @@ class RpcManager:
 
     def _clean_rotating_handler(self, logger):
         # Remove any rotating handler
+        logger.info("Closing file log (shutting down)")
         for handler in filter(lambda h: isinstance(h, TimedRotatingFileHandler), logger.handlers):
             logger.removeHandler(handler)
 
@@ -74,17 +75,10 @@ class RpcManager:
         """
         pass
 
-    def preshutdown(self):
+    def shutdown(self):
         """
         To be defined by sub-classes, if some specific operations have to be performed before shutting down the process
         """
-
-    def shutdown(self):
-        # Delegate to real manager implementation
-        self.preshutdown()
-
-        # Remove rotating logging handlers
-        self._clean_rotating_handler(self.logger)
 
     def _load_config(self, config_folder: Path) -> dict:
         # Check config file presence

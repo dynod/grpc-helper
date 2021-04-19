@@ -259,23 +259,37 @@ class RpcServer(InfoServiceServicer, RpcManager):
             for call in list(self.calls):
                 f.write(f"{call}\n")
 
-    def preshutdown(self):
+    def shutdown(self):
         """
         Shuts down this RPC server instance
         """
 
-        # Stop server and wait for termination
-        self.logger.debug(f"Shutting down RPC server on port {self.__port}")
-        self.__server.stop(None)
-        self.__server.wait_for_termination()
-        self.logger.debug(f"RPC server shut down on port {self.__port}")
+        # Only if not shutdown yet
+        if self.__server is not None:
+            # Make sure we won't enter here twice
+            terminating_server = self.__server
+            self.__server = None
 
-        # Shutdown all managers
-        for descriptor in filter(lambda d: hasattr(d.manager, "shutdown") and not isinstance(d.manager, RpcServer), self.descriptors):
-            descriptor.manager.shutdown()
+            # Stop server and wait for termination
+            self.logger.debug(f"Shutting down RPC server on port {self.__port}; stop accepting new requests")
+            terminating_server.stop(RpcStaticConfig.SHUTDOWN_GRACE.float_val)
 
-        # Remove rotating handler for root logger
-        self._clean_rotating_handler(logging.getLogger())
+            # Shutdown all managers
+            self.logger.debug("Shutting down all managers")
+            for descriptor in filter(lambda d: not isinstance(d.manager, RpcServer), self.descriptors):
+                descriptor.manager.shutdown()
+
+            # Wait for all pending requests to be terminated
+            self.logger.debug("Waiting to terminate all requests")
+            terminating_server.wait_for_termination()
+            self.logger.debug(f"RPC server shut down on port {self.__port}")
+
+            # Removing all rotating loggers
+            for descriptor in self.descriptors:
+                self._clean_rotating_handler(descriptor.manager.logger)
+
+            # Remove rotating handler for current + root loggers
+            self._clean_rotating_handler(logging.getLogger())
 
     def get(self, request: Empty) -> MultiServiceInfo:
         # Just build message from stored info
