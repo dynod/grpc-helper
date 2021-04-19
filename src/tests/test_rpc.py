@@ -18,6 +18,11 @@ class SampleServicer(SampleServiceServicer, RpcManager):
     def __init__(self):
         super().__init__()
         self.wait_a_bit = False
+        self.is_shutdown = False
+
+    def shutdown(self):
+        self.logger.info("Shutting down service")
+        self.is_shutdown = True
 
     def method1(self, request: Empty) -> Result:
         self.logger.info("In SampleServicer.method1!!!")
@@ -26,10 +31,12 @@ class SampleServicer(SampleServiceServicer, RpcManager):
         if self.wait_a_bit:
             time.sleep(3)
 
-        # Use auto-client to access other services
-        s = self.client.info.get(Empty())
+        # Use auto-client to access other services (only if not shutdown in the meantime)
+        s = None
+        if not self.is_shutdown:
+            s = self.client.info.get(Empty())
 
-        return Result(msg=f"Found info count: {len(s.items)}")
+        return Result(msg=f"Found info count: {len(s.items) if s is not None else None}")
 
     def method2(self, request: Empty) -> Result:
         self.logger.info("Raising error!!!")
@@ -172,7 +179,7 @@ class TestRpcServer(TestUtils):
             assert e.rc == ResultCode.ERROR_RPC
 
         # Verify we retried at least one time
-        self.check_logs("(retry)")
+        self.check_logs("(retry because of 'unavailable' error; details: 'failed to connect to all addresses')")
 
     def test_not_implemented(self, client):
         # Not implemented call
@@ -181,3 +188,33 @@ class TestRpcServer(TestUtils):
             raise AssertionError("Shouldn't get there")
         except RpcException as e:
             assert e.rc == ResultCode.ERROR_RPC
+
+    def test_graceful_shutdown(self, client):
+        # Tweak servicer to wait a bit
+        self.servicer.wait_a_bit = True
+
+        # Parallelize shutdown
+        def shutdown_server():
+            # Wait to be in method
+            init = time.time()
+            while (time.time() - init) < 5:
+                try:
+                    self.check_logs("In SampleServicer.method1!!!")
+                    break
+                except Exception:
+                    time.sleep(0.5)
+
+            # Shutdown server
+            logging.warning("-- Calling shutdown from debug thread")
+            self.server.shutdown()
+            logging.warning("-- Shutdown returned in debug thread")
+
+        t = Thread(target=shutdown_server)
+        t.start()
+
+        # Parallelize call and shutdown
+        s = client.sample.method1(Empty())
+        assert s.msg == "Found info count: None"
+
+        # Just make sure debug thread is terminated
+        t.join()

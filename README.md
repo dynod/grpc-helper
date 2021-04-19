@@ -42,7 +42,7 @@ The manager class must:
 
 A manager class can also inherit from **`RpcManager`** class, which provides some usefull features:
 * a **`load`** method, called by the server once all services are alive (typically to perform some internal initializations)
-* a **`shutdown`** method, called by the server once it is shutdown (typically to perform some internal finalization operations)
+* a **`shutdown`** method, called by the server once it is shutdown (typically to perform some internal finalization operations + interrupt long-running ones)
 * a **`logger`** instance, to be used for all logging inside this manager and dependencies
 * a **`lock`** instance, to be used to protect manager inner fields against reentrance
 * a **`client`** instance, initialized to the server own auto-client (see below)
@@ -52,6 +52,9 @@ A manager class can also inherit from **`RpcManager`** class, which provides som
 
 The RPC server will live its life in its own thread. When the application is about to terminate, it is advised to call the **`shutdown`** method
 in order to turn off the RPC server properly.
+
+When this method is called, the server will stop accepting new requests, and will wait for pending operations to terminate (within the **`rpc-shutdown-grace`**
+configured timeout), after having notified all managers through their own **`shutdown`** method.
 
 #### Default services
 
@@ -93,9 +96,10 @@ Both logging folder and rollover cadency can be configured -- see **Configuratio
 The RPC server behavior can be configured through the following static configuration items:
 Name | Description | Type | Default
 ---- | ----------- | ---- | -------
-**rpc-max-workers**        | Maximum parallel RPC worker threads                                 | Positive integer | **`30`**
-**rpc-logs-folder**        | Folder (absolute or workspace-relative) where to store rolling logs | String           | **`"logs"`**
-**rpc-logs-backup**        | Backup log files to be persisted for each manager on rollover       | Integer          | **`10`**
+**rpc-max-workers**        | Maximum parallel RPC worker threads                                   | Positive integer | **`30`**
+**rpc-shutdown-grace**     | Grace period for pending calls to be terminated on shutdown (seconds) | Positive float   | **`30`**
+**rpc-logs-folder**        | Folder (absolute or workspace-relative) where to store rolling logs   | String           | **`"logs"`**
+**rpc-logs-backup**        | Backup log files to be persisted for each manager on rollover         | Integer          | **`10`**
 **rpc-logs-interval-unit** | Logs rollover interval unit (see [TimedRotatingFileHandler documentation](https://docs.python.org/3/library/logging.handlers.html#logging.handlers.TimedRotatingFileHandler)) | Custom (see [doc](https://docs.python.org/3/library/logging.handlers.html#logging.handlers.TimedRotatingFileHandler)) | **`H`**
 **rpc-logs-interval**      | Logs rollover interval (see [TimedRotatingFileHandler documentation](https://docs.python.org/3/library/logging.handlers.html#logging.handlers.TimedRotatingFileHandler)) | Positive integer | **`1`**
 

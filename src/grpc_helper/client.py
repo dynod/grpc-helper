@@ -40,7 +40,7 @@ class RetryStub:
                     if e.code() == StatusCode.UNAVAILABLE and self.timeout is not None and (time.time() - first_try) < self.timeout:
                         # Server is not available, and timeout didn't expired yet: sleep and retry
                         time.sleep(0.5)
-                        self.logger.debug(f"<RPC> >> {self.s_name}.{self.m_name}... (retry)")
+                        self.logger.debug(f"<RPC> >> {self.s_name}.{self.m_name}... (retry because of 'unavailable' error; details: '{e.details()}')")
                     else:
                         # Timed out or any other reason: raise exception
                         self.logger.error(f"<RPC> >> {self.s_name}.{self.m_name} error: {str(e)}")

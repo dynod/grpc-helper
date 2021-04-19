@@ -11,16 +11,33 @@ NAME_PATTERN = re.compile("[a-z][a-z0-9-]*")
 # Integer validation
 def validate_int(name: str, value: str):
     try:
-        int(value)
+        return int(value)
     except ValueError:
         raise RpcException(f"Invalid int value for config item {name}: {value}", rc=ResultCode.ERROR_PARAM_INVALID)
 
 
+# Positive number validation
+def validate_pos(name: str, value: str, type_validator: Callable):
+    if type_validator(name, value) <= 0:
+        raise RpcException(f"Expected strictly positive value for config item {name} but got {value}", rc=ResultCode.ERROR_PARAM_INVALID)
+
+
 # Positive integer validation
 def validate_pos_int(name: str, value: str):
-    validate_int(name, value)
-    if int(value) <= 0:
-        raise RpcException(f"Expected strictly positive value for config item {name} but got {value}", rc=ResultCode.ERROR_PARAM_INVALID)
+    validate_pos(name, value, validate_int)
+
+
+# Float validation
+def validate_float(name: str, value: str):
+    try:
+        return float(value)
+    except ValueError:
+        raise RpcException(f"Invalid float value for config item {name}: {value}", rc=ResultCode.ERROR_PARAM_INVALID)
+
+
+# Float validation
+def validate_pos_float(name: str, value: str):
+    validate_pos(name, value, validate_float)
 
 
 # Built-Validators
@@ -28,6 +45,8 @@ VALIDATORS = {
     ConfigValidator.CONFIG_VALID_STRING: lambda _n, _v: None,
     ConfigValidator.CONFIG_VALID_INT: validate_int,
     ConfigValidator.CONFIG_VALID_POS_INT: validate_pos_int,
+    ConfigValidator.CONFIG_VALID_FLOAT: validate_float,
+    ConfigValidator.CONFIG_VALID_POS_FLOAT: validate_pos_float,
 }
 
 
@@ -76,6 +95,10 @@ class Config:
     @property
     def int_val(self) -> int:
         return int(self.str_val)
+
+    @property
+    def float_val(self) -> float:
+        return float(self.str_val)
 
     def reset(self):
         # Reset item value to its default one

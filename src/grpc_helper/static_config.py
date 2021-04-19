@@ -17,6 +17,12 @@ class RpcStaticConfig(ConfigHolder):
     MAX_WORKERS = Config(
         name="rpc-max-workers", description="Maximum parallel RPC worker threads", default_value="30", validator=ConfigValidator.CONFIG_VALID_POS_INT
     )
+    SHUTDOWN_GRACE = Config(
+        name="rpc-shutdown-grace",
+        description="Grace period for pending calls to be terminated on shutdown (seconds)",
+        default_value="30",
+        validator=ConfigValidator.CONFIG_VALID_POS_FLOAT,
+    )
     LOGS_FOLDER = Config(name="rpc-logs-folder", description="Workspace relative folder where to store rolling logs", default_value="logs")
     LOGS_BACKUP = Config(
         name="rpc-logs-backup",
