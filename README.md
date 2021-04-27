@@ -25,14 +25,16 @@ The **`Folders`** class handle the different folders used by the server:
 * a *workspace* folder, used to store config and other persistent information by the current server.
 
 The **`RpcServiceDescriptor`** class describes a given service to be hooked in a server instance. Its attributes are:
-* a Python module (from which name and version will be used for the InfoService items registration)
-* a service name (used for service identification in InfoService items, and for auto-client setup)
+* a Python module (from which name and version will be used for the RpcServerService items registration)
+* a service name (used for service identification in RpcServerService items, and for auto-client setup)
 * a version enum:
    * lowest value in the enum will be considered to be the minimum supported version for this service API
    * highest value in the enum will be considered to be the current version for this service API
-* a manager instance, to which all RPC calls will be delegated
+* a manager instance, to which all RPC calls will be delegated. When registering a proxied service, this has to be a simple instance of the generated servicer.
 * the GRPC generated hooking method for this service
 * the GRPC generated client stub class
+* a boolean stating if this service is a proxied service or not
+
 
 The manager class must:
 * inherit from the GRPC generated servicer class, in order to use the default implementation if any of the service method is not implemented by this manager
@@ -41,8 +43,8 @@ The manager class must:
    * declare the return type
 
 A manager class can also inherit from **`RpcManager`** class, which provides some usefull features:
-* a **`load`** method, called by the server once all services are alive (typically to perform some internal initializations)
-* a **`shutdown`** method, called by the server once it is shutdown (typically to perform some internal finalization operations + interrupt long-running ones)
+* a **`_load`** method, called by the server once all services are alive (typically to perform some internal initializations)
+* a **`_shutdown`** method, called by the server once it is shutdown (typically to perform some internal finalization operations + interrupt long-running ones)
 * a **`logger`** instance, to be used for all logging inside this manager and dependencies
 * a **`lock`** instance, to be used to protect manager inner fields against reentrance
 * a **`client`** instance, initialized to the server own auto-client (see below)
@@ -51,16 +53,20 @@ A manager class can also inherit from **`RpcManager`** class, which provides som
 #### Lifecycle
 
 The RPC server will live its life in its own thread. When the application is about to terminate, it is advised to call the **`shutdown`** method
-in order to turn off the RPC server properly.
+in order to turn off the RPC server properly. This method can also be called remotely as a **RpcServerService** servive method.
 
-When this method is called, the server will stop accepting new requests, and will wait for pending operations to terminate (within the **`rpc-shutdown-grace`**
-configured timeout), after having notified all managers through their own **`shutdown`** method.
+When the shutdown method is called:
+* the server will stop accepting new requests
+* it will notify all managers through their own **`_shutdown`** method
+* then it will wait for pending operations to terminate (within the **`rpc-shutdown-grace`** configured timeout)method.
+* if called through RPC, if will wait for the required timeout (using by default the **`rpc-shutdown-timeout`** value), if this one is >0
+* then the shutdown will be finalized (all non-daemon threads terminated)
 
 #### Default services
 
 Note that the RPC server instance will automatically serve:
-* the [info service](https://github.com/dynod/grpc-helper-api/blob/main/doc/info.md),
-giving information about all installed services thanks to the provided descriptors.
+* the [server handling service](https://github.com/dynod/grpc-helper-api/blob/main/doc/server.md),
+for basic RPC server operations handling.
 * the [config service](https://github.com/dynod/grpc-helper-api/blob/main/doc/config.md),
 allowing to remotely get/update/reset user configuration items.
 * the [logger service](https://github.com/dynod/grpc-helper-api/blob/main/doc/logger.md),
@@ -76,14 +82,22 @@ range for this service:
 #### Debug
 
 The RPC server will hook to the USR2 signal for debug purpose. When receiving this signal, following debug information will be dumped in a file
-name **RpcServerDump-YYYYMMDDhhmmss.txt** (with dump timestamp) in **/tmp** folder:
+name **RpcServerDump-YYYYMMDDhhmmss.txt** (with dump timestamp) in the logging folder (see below):
 * all the live threads call stacks
 * all the pending RPC requests
 
 #### Auto-client
 
 An initialized RPC server instance provides an **`auto_client`** attribute, providing an **`RpcClient`** instance pointing on everything
-served by this server.
+served by this server. Note that the timeout for this client can be configured through the **`rpc-client-timeout`** config item.
+
+#### Proxied services
+
+Services declared as proxied ones (see **`RpcServiceDescriptor`** above) will be forwarded to the required server/port as soon as this server calls the 
+**`proxy_register`** method of the proxying server. Note that if this method is not called within the **`rpc-client-timeout`** time, the method call will
+end with an **`ERROR_PROXY_UNREGISTERED`** error.
+
+Configuration of proxied services is persisted in the workspace, in order to restore them when the proxying server restarts.
 
 #### Rolling logs
 
@@ -98,10 +112,14 @@ Name | Description | Type | Default
 ---- | ----------- | ---- | -------
 **rpc-max-workers**        | Maximum parallel RPC worker threads                                   | Positive integer | **`30`**
 **rpc-shutdown-grace**     | Grace period for pending calls to be terminated on shutdown (seconds) | Positive float   | **`30`**
+**rpc-shutdown-timeout**   | Final timeout before real shutdown (i.e. end of process; seconds)     | Positive float   | **`60`**
 **rpc-logs-folder**        | Folder (absolute or workspace-relative) where to store rolling logs   | String           | **`"logs"`**
 **rpc-logs-backup**        | Backup log files to be persisted for each manager on rollover         | Integer          | **`10`**
 **rpc-logs-interval-unit** | Logs rollover interval unit (see [TimedRotatingFileHandler documentation](https://docs.python.org/3/library/logging.handlers.html#logging.handlers.TimedRotatingFileHandler)) | Custom (see [doc](https://docs.python.org/3/library/logging.handlers.html#logging.handlers.TimedRotatingFileHandler)) | **`H`**
 **rpc-logs-interval**      | Logs rollover interval (see [TimedRotatingFileHandler documentation](https://docs.python.org/3/library/logging.handlers.html#logging.handlers.TimedRotatingFileHandler)) | Positive integer | **`1`**
+**rpc-main-host**          | Main RPC server host (to be used by proxied services)                 | String           | **`"localhost"`**
+**rpc-main-port**          | Main RPC server port (to be used by proxied services)                 | Positive integer | **`54321`**
+**rpc-client-timeout**     | Timeout for RPC client when server is unreachable or proxy not registered yet (seconds) | Positive float   | **`60`**
 
 #### Usage example
 
@@ -142,8 +160,9 @@ The **`RpcClient`** class provides an access to client side of a GRPC service. T
       * the client current API version (coming from the version enum)
 
 Optional inputs can also be provided:
-* a timeout if RPC server is unreachable (default: 60s)
+* a timeout if RPC server is unreachable (default: **60s**)
 * a name allowing to identify the client on the server side
+* a boolean flag stating if the client shall raise exceptions when receiving non-OK **`Result`** status (default: **true**)
 
 #### Usage example
 

@@ -27,10 +27,16 @@ class RpcManager:
         self.config_name = config_name
         self.config_validator = config_validator
 
+    @property
+    def _log_folder(self) -> Path:
+        log_subfolder = Path(RpcStaticConfig.LOGS_FOLDER.str_val)
+        log_folder = self.folders.workspace / log_subfolder if self.folders.workspace is not None else log_subfolder
+        log_folder.parent.mkdir(parents=True, exist_ok=True)
+        return log_folder
+
     def _add_rotating_handler(self, logger: logging.Logger):
         # Configure persisting folder/file for logs
-        log_subfolder = Path(RpcStaticConfig.LOGS_FOLDER.str_val)
-        log_file = (self.folders.workspace / log_subfolder if self.folders.workspace is not None else log_subfolder) / logger.name / f"{logger.name}.log"
+        log_file = self._log_folder / logger.name / f"{logger.name}.log"
         log_file.parent.mkdir(parents=True, exist_ok=True)
 
         # Setup rotating handler with specific format
@@ -57,25 +63,25 @@ class RpcManager:
         for handler in filter(lambda h: isinstance(h, TimedRotatingFileHandler), logger.handlers):
             logger.removeHandler(handler)
 
-    def init_folders_n_logger(self, folders: Folders):
+    def _init_folders_n_logger(self, folders: Folders):
         # Remember folders
         self.folders = folders if folders is not None else Folders()
 
         # Prepare handler
         self._add_rotating_handler(self.logger)
 
-    def preload(self, client: RpcClient, folders: Folders):
+    def _preload(self, client: RpcClient, folders: Folders):
         # Remember client, and delegate loading to subclass
         self.client = client
-        self.load()
+        self._load()
 
-    def load(self):
+    def _load(self):
         """
         To be defined by sub-classes, if some specific operations have to be performed once all basic initializations are done
         """
         pass
 
-    def shutdown(self):
+    def _shutdown(self):
         """
         To be defined by sub-classes, if some specific operations have to be performed before shutting down the process
         """
@@ -93,7 +99,8 @@ class RpcManager:
                         raise RpcException(f"Invalid config json file (bad json: {e}): {config_file}", ResultCode.ERROR_MODEL_INVALID)
 
                     # Also validate model with provided validator
-                    self.config_validator(config_file, json_model)
+                    if self.config_validator is not None:
+                        self.config_validator(config_file, json_model)
 
                     # Model looks to be valid: go on
                     return json_model

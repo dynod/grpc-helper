@@ -17,9 +17,21 @@ enum SampleApiVersion {
     SAMPLE_API_CURRENT = 1;   // Current version
 }
 
+// Sample request
+message SampleRequest {
+    string foo = 1;
+}
+
+// Sample response
+message SampleResponse {
+    Result r = 1;
+    string bar = 2;
+}
+
 // Sample service
 service SampleService {
-    rpc method1 (Empty) returns (Result);
-    rpc method2 (Empty) returns (Result);
-    rpc method3 (Empty) returns (Result);
+    rpc method1 (Empty) returns (ResultStatus);
+    rpc method2 (Empty) returns (ResultStatus);
+    rpc method3 (Empty) returns (ResultStatus);
+    rpc method4 (SampleRequest) returns (SampleResponse);
 }
