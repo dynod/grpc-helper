@@ -1,15 +1,29 @@
+import json
 import logging
 import os
 import signal
 import time
 from pathlib import Path
-from threading import Thread
+from threading import Event, Thread
 from typing import List
+
+import pytest
 
 import grpc_helper
 from grpc_helper import Folders, RpcClient, RpcException, RpcManager, RpcServer, RpcServiceDescriptor
-from grpc_helper.api import ConfigApiVersion, Empty, InfoApiVersion, LoggerApiVersion, Result, ResultCode
-from tests.api import SampleApiVersion
+from grpc_helper.api import (
+    ConfigApiVersion,
+    Empty,
+    Filter,
+    LoggerApiVersion,
+    ProxyRegisterRequest,
+    Result,
+    ResultCode,
+    ResultStatus,
+    ServerApiVersion,
+    ShutdownRequest,
+)
+from tests.api import SampleApiVersion, SampleRequest, SampleResponse
 from tests.api.sample_pb2_grpc import SampleServiceServicer, SampleServiceStub, add_SampleServiceServicer_to_server
 from tests.utils import TestUtils
 
@@ -20,11 +34,11 @@ class SampleServicer(SampleServiceServicer, RpcManager):
         self.wait_a_bit = False
         self.is_shutdown = False
 
-    def shutdown(self):
+    def _shutdown(self):
         self.logger.info("Shutting down service")
         self.is_shutdown = True
 
-    def method1(self, request: Empty) -> Result:
+    def method1(self, request: Empty) -> ResultStatus:
         self.logger.info("In SampleServicer.method1!!!")
 
         # Sleep if requested
@@ -34,13 +48,17 @@ class SampleServicer(SampleServiceServicer, RpcManager):
         # Use auto-client to access other services (only if not shutdown in the meantime)
         s = None
         if not self.is_shutdown:
-            s = self.client.info.get(Empty())
+            s = self.client.srv.info(Filter())
 
-        return Result(msg=f"Found info count: {len(s.items) if s is not None else None}")
+        return ResultStatus(r=Result(msg=f"Found info count: {len(s.items) if s is not None else None}"))
 
-    def method2(self, request: Empty) -> Result:
+    def method2(self, request: Empty) -> ResultStatus:
         self.logger.info("Raising error!!!")
         raise RpcException("sample error", rc=12)
+
+    def method4(self, request: SampleRequest) -> SampleResponse:
+        self.logger.info(f"request: {request.foo}")
+        return SampleResponse(bar=request.foo)
 
 
 class TestRpcServer(TestUtils):
@@ -52,8 +70,8 @@ class TestRpcServer(TestUtils):
     def test_server(self, client):
         # Normal call
         s = client.sample.method1(Empty())
-        assert s.code == ResultCode.OK
-        assert s.msg == "Found info count: 4"
+        assert s.r.code == ResultCode.OK
+        assert s.r.msg == "Found info count: 4"
 
     def test_debug_dump(self, client):
         # Tweak servicer to send debug signal to serving process
@@ -61,7 +79,7 @@ class TestRpcServer(TestUtils):
 
         # Clean test files
         def dump_files() -> List[Path]:
-            return list(Path("/tmp").glob("RpcServerDump-*.txt"))
+            return list((self.workspace_path / "logs").glob("RpcServerDump-*.txt"))
 
         previous_ones = dump_files()
         if len(previous_ones):
@@ -74,7 +92,7 @@ class TestRpcServer(TestUtils):
         # Normal call in separated thread
         def call_method1():
             s = client.sample.method1(Empty())
-            assert s.code == ResultCode.OK
+            assert s.r.code == ResultCode.OK
 
         t = Thread(target=call_method1)
         t.start()
@@ -113,26 +131,26 @@ class TestRpcServer(TestUtils):
 
     def test_get_info(self, client):
         # Try a "get info" call
-        s = client.info.get(Empty())
+        s = client.srv.info(Filter())
         assert len(s.items) == 4
         info = s.items[0]
-        assert info.name == "grpc-helper.info"
-        assert info.version == grpc_helper.__version__
-        assert info.current_api_version == InfoApiVersion.INFO_API_CURRENT
-        assert info.supported_api_version == InfoApiVersion.INFO_API_SUPPORTED
+        assert info.name == "srv"
+        assert info.version == f"grpc-helper:{grpc_helper.__version__}"
+        assert info.current_api_version == ServerApiVersion.SERVER_API_CURRENT
+        assert info.supported_api_version == ServerApiVersion.SERVER_API_SUPPORTED
         info = s.items[1]
-        assert info.name == "grpc-helper.config"
-        assert info.version == grpc_helper.__version__
+        assert info.name == "config"
+        assert info.version == f"grpc-helper:{grpc_helper.__version__}"
         assert info.current_api_version == ConfigApiVersion.CONFIG_API_CURRENT
         assert info.supported_api_version == ConfigApiVersion.CONFIG_API_SUPPORTED
         info = s.items[2]
-        assert info.name == "grpc-helper.log"
-        assert info.version == grpc_helper.__version__
+        assert info.name == "log"
+        assert info.version == f"grpc-helper:{grpc_helper.__version__}"
         assert info.current_api_version == LoggerApiVersion.LOGGER_API_CURRENT
         assert info.supported_api_version == LoggerApiVersion.LOGGER_API_SUPPORTED
         info = s.items[3]
-        assert info.name == "grpc-helper.sample"
-        assert info.version == grpc_helper.__version__
+        assert info.name == "sample"
+        assert info.version == f"grpc-helper:{grpc_helper.__version__}"
         assert info.current_api_version == SampleApiVersion.SAMPLE_API_CURRENT
         assert info.supported_api_version == SampleApiVersion.SAMPLE_API_SUPPORTED
 
@@ -140,7 +158,7 @@ class TestRpcServer(TestUtils):
         # Try with client not providing API version
         c = RpcClient("127.0.0.1", self.rpc_port, {"sample": (SampleServiceStub, None)})
         s = c.sample.method1(Empty())
-        assert s.code == ResultCode.OK
+        assert s.r.code == ResultCode.OK
 
     def test_client_too_old(self, sample_server):
         # Try with client with too old API version
@@ -214,7 +232,220 @@ class TestRpcServer(TestUtils):
 
         # Parallelize call and shutdown
         s = client.sample.method1(Empty())
-        assert s.msg == "Found info count: None"
+        assert s.r.msg == "Found info count: None"
 
         # Just make sure debug thread is terminated
         t.join()
+
+    def wait_for_shutdown(self, timeout: int):
+        init_time = time.time()
+        while (time.time() - init_time) < timeout:
+            if not self.server.is_running:
+                return
+            time.sleep(1)
+        raise AssertionError(f"Server didn't shutdown after {timeout}s")
+
+    def test_immediate_shutdown_rpc(self, client):
+        # Just ask for immediate server shutdown through RPC
+        client.srv.shutdown(ShutdownRequest(timeout=-1))
+
+        # Wait for server to be shutdown
+        self.wait_for_shutdown(2)
+
+    def test_delayed_shutdown_rpc(self, client):
+        # Just ask for delayed server shutdown through RPC
+        client.srv.shutdown(ShutdownRequest(timeout=1))
+
+        # Wait for server to be shutdown
+        self.wait_for_shutdown(4)
+
+        # Check logs
+        self.check_logs("!!! Will shutdown in 1s !!!")
+
+    @property
+    def proxy_port(self) -> int:
+        return self.rpc_port + 50
+
+    def new_proxy_server(self):
+        self.proxy_server = RpcServer(
+            self.proxy_port,
+            [
+                # Proxy service definition for sample service
+                RpcServiceDescriptor(
+                    grpc_helper, "sample", SampleApiVersion, SampleServiceServicer(), add_SampleServiceServicer_to_server, SampleServiceStub, True
+                )
+            ],
+            folders=Folders(workspace=self.proxy_workspace),
+        )
+        return self.proxy_server
+
+    @property
+    def proxy_workspace(self):
+        return self.test_folder / "wks_proxy"
+
+    @pytest.fixture
+    def proxy_server(self):
+        # Short timeout for unregistered proxy
+        os.environ["RPC_CLIENT_TIMEOUT"] = "2"
+
+        # Prepare proxy
+        self.new_proxy_server()
+
+        # back to test
+        yield self.proxy_server
+
+        # Shutdown server
+        self.proxy_server.shutdown()
+        del os.environ["RPC_CLIENT_TIMEOUT"]
+
+    def test_unregistered_proxy(self, proxy_server: RpcServer):
+        # Try a client call
+        try:
+            proxy_server.client.sample.method4(SampleRequest(foo="test"))
+            raise AssertionError("shouldn't get here")
+        except RpcException as e:
+            assert e.rc == ResultCode.ERROR_PROXY_UNREGISTERED
+
+    def test_late_registered_proxy(self, proxy_server: RpcServer, client):
+        sync_event = Event()
+
+        # Prepare thread for late proxy registration
+        def register():
+            logging.info("About to register")
+            sync_event.set()
+            time.sleep(1)
+            proxy_server.client.srv.proxy_register(ProxyRegisterRequest(names=["sample"], version="123", port=self.rpc_port, host="localhost"))
+
+        t = Thread(target=register)
+        t.start()
+
+        # Wait for event
+        sync_event.wait()
+
+        # Launch client call
+        s = proxy_server.client.sample.method4(SampleRequest(foo="test"))
+        assert s.bar == "test"
+
+        # Just clean thread...
+        t.join()
+
+        # Make sure we waited at least one 0.5s loop
+        self.check_logs("Proxy not registered yet for method method4: wait a bit...")
+
+    def test_proxy_register_missing_params(self, proxy_server):
+        # Missing params
+        try:
+            proxy_server.client.srv.proxy_register(ProxyRegisterRequest())
+            raise AssertionError("shouldn't get here")
+        except RpcException as e:
+            assert e.rc == ResultCode.ERROR_PARAM_MISSING
+        try:
+            proxy_server.client.srv.proxy_register(ProxyRegisterRequest(names=[""]))
+            raise AssertionError("shouldn't get here")
+        except RpcException as e:
+            assert e.rc == ResultCode.ERROR_PARAM_MISSING
+        try:
+            proxy_server.client.srv.proxy_register(ProxyRegisterRequest(names=["sample"]))
+            raise AssertionError("shouldn't get here")
+        except RpcException as e:
+            assert e.rc == ResultCode.ERROR_PARAM_MISSING
+        try:
+            proxy_server.client.srv.proxy_register(ProxyRegisterRequest(names=["sample"], version="1"))
+            raise AssertionError("shouldn't get here")
+        except RpcException as e:
+            assert e.rc == ResultCode.ERROR_PARAM_MISSING
+        try:
+            proxy_server.client.srv.proxy_register(ProxyRegisterRequest(names=["sample"], port=12))
+            raise AssertionError("shouldn't get here")
+        except RpcException as e:
+            assert e.rc == ResultCode.ERROR_PARAM_MISSING
+
+    def test_proxy_register_unknown_service(self, proxy_server):
+        # Unknown service
+        try:
+            proxy_server.client.srv.proxy_register(ProxyRegisterRequest(names=["foo"]))
+            raise AssertionError("shouldn't get here")
+        except RpcException as e:
+            assert e.rc == ResultCode.ERROR_ITEM_UNKNOWN
+
+    def test_proxy_register_not_a_proxy(self, proxy_server):
+        # Service which is not a proxy one
+        try:
+            proxy_server.client.srv.proxy_register(ProxyRegisterRequest(names=["srv"]))
+            raise AssertionError("shouldn't get here")
+        except RpcException as e:
+            assert e.rc == ResultCode.ERROR_PARAM_INVALID
+
+    def test_proxy_register_n_forget(self, proxy_server, client):
+        # First list
+        s = proxy_server.client.srv.info(Filter(names=["sample"]))
+        info = s.items[0]
+        assert info.name == "sample"
+        assert info.is_proxy
+        assert info.proxy_host == ""
+        assert info.proxy_port == 0
+        assert info.version == f"grpc-helper:{grpc_helper.__version__}"
+
+        # No persistence
+        proxy_config = self.proxy_workspace / "proxy.json"
+        assert not proxy_config.exists()
+
+        # Register
+        proxy_server.client.srv.proxy_register(ProxyRegisterRequest(names=["sample"], version="123", port=self.rpc_port, host="localhost"))
+
+        # Verify persistence
+        assert proxy_config.exists()
+        with proxy_config.open("r") as f:
+            model = json.load(f)
+        assert "sample" in model
+
+        # List again
+        s = proxy_server.client.srv.info(Filter(names=["sample"]))
+        info = s.items[0]
+        assert info.name == "sample"
+        assert info.is_proxy
+        assert info.proxy_host == "localhost"
+        assert info.proxy_port == self.rpc_port
+        assert info.version == "123"
+
+        # Try a simple call
+        s = proxy_server.client.sample.method1(Empty())
+        assert s.r.msg == "Found info count: 4"
+
+        # Shutdown / reload to verify persistence
+        proxy_server.shutdown()
+        proxy_server = self.new_proxy_server()
+
+        # Try a simple call again
+        s = proxy_server.client.sample.method1(Empty())
+        assert s.r.msg == "Found info count: 4"
+
+        # Forget
+        proxy_server.client.srv.proxy_forget(Filter(names=["sample"]))
+
+        # Verify persistence
+        assert proxy_config.exists()
+        with proxy_config.open("r") as f:
+            model = json.load(f)
+        assert len(model) == 0
+
+        # List again
+        s = proxy_server.client.srv.info(Filter(names=["sample"]))
+        info = s.items[0]
+        assert info.name == "sample"
+        assert info.is_proxy
+        assert info.proxy_host == ""
+        assert info.proxy_port == 0
+        assert info.version == "123"
+
+    def test_proxy_error_method(self, proxy_server, client):
+        # Register proxy
+        proxy_server.client.srv.proxy_register(ProxyRegisterRequest(names=["sample"], version="123", port=self.rpc_port))
+
+        # Try method raising an error
+        try:
+            proxy_server.client.sample.method2(Empty())
+            raise AssertionError("shouldn't get here")
+        except RpcException as e:
+            assert "sample error" in str(e)
+            assert e.rc == 12

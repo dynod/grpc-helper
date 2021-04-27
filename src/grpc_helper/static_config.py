@@ -1,6 +1,6 @@
-from grpc_helper import RpcException
 from grpc_helper.api import ConfigValidator, ResultCode
 from grpc_helper.config.cfg_item import Config, ConfigHolder
+from grpc_helper.errors import RpcException
 
 # Allowed interval units
 INTERVAL_UNITS = ["S", "M", "H", "D", "MIDNIGHT"] + list(map(lambda x: f"W{x}", range(7)))
@@ -23,6 +23,12 @@ class RpcStaticConfig(ConfigHolder):
         default_value="30",
         validator=ConfigValidator.CONFIG_VALID_POS_FLOAT,
     )
+    SHUTDOWN_TIMEOUT = Config(
+        name="rpc-shutdown-timeout",
+        description="Final timeout before real shutdown (i.e. end of process; seconds)",
+        default_value="60",
+        validator=ConfigValidator.CONFIG_VALID_POS_FLOAT,
+    )
     LOGS_FOLDER = Config(name="rpc-logs-folder", description="Workspace relative folder where to store rolling logs", default_value="logs")
     LOGS_BACKUP = Config(
         name="rpc-logs-backup",
@@ -42,4 +48,17 @@ class RpcStaticConfig(ConfigHolder):
         description="Rollover interval (see TimedRotatingFileHandler documentation)",
         default_value="1",
         validator=ConfigValidator.CONFIG_VALID_POS_INT,
+    )
+    MAIN_HOST = Config(name="rpc-main-host", description="Main RPC server host (to be used by proxied services)", default_value="localhost")
+    MAIN_PORT = Config(
+        name="rpc-main-port",
+        description="Main RPC server port (to be used by proxied services)",
+        default_value="54321",
+        validator=ConfigValidator.CONFIG_VALID_POS_INT,
+    )
+    CLIENT_TIMEOUT = Config(
+        name="rpc-client-timeout",
+        description="Timeout for RPC client when server is unreachable or proxy not registered yet (seconds)",
+        default_value="60",
+        validator=ConfigValidator.CONFIG_VALID_POS_FLOAT,
     )

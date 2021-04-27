@@ -53,7 +53,7 @@ class ConfigManager(ConfigServiceServicer, RpcManager):
             # Default (no persisted current value or validation error on persisted value)
             item.update(default_val)
 
-    def load(self):
+    def _load(self):
         # Simple dump of all loaded items
         self.logger.info("Items dump on load:")
         for item_type, name, item in [
