@@ -6,7 +6,7 @@ import traceback
 from concurrent import futures
 from dataclasses import dataclass
 from signal import SIGUSR2, signal
-from threading import Thread, current_thread
+from threading import Event, Thread, current_thread
 from types import ModuleType
 from typing import Callable, Dict, List, NoReturn, TypeVar, Union
 
@@ -224,7 +224,7 @@ class RpcServer(RpcServerServiceServicer, RpcManager):
         RpcManager.__init__(self, PROXY_FILE)
         self.__port = port
         self.calls = []
-        self.__is_running = False
+        self.__shutdown_event = Event()
 
         # Prepare config manager
         # (by the way, add our own static items)
@@ -297,7 +297,6 @@ class RpcServer(RpcServerServiceServicer, RpcManager):
             self.logger.error(msg)
             raise RpcException(msg, rc=ResultCode.ERROR_PORT_BUSY)
         self.__server.start()
-        self.__is_running = True
         self.logger.debug(f"RPC server started on port {self.__port}")
 
         # Hook debug signal
@@ -397,7 +396,7 @@ class RpcServer(RpcServerServiceServicer, RpcManager):
 
         # Remove rotating handler for current + root loggers
         self._clean_rotating_handler(logging.getLogger())
-        self.__is_running = False
+        self.__shutdown_event.set()
 
     def info(self, request: Filter) -> MultiServiceInfo:
         # Verify input service names
@@ -417,7 +416,7 @@ class RpcServer(RpcServerServiceServicer, RpcManager):
     @property
     def is_running(self) -> bool:
         # Just check is server is still running
-        return self.__is_running
+        return not self.__shutdown_event.is_set()
 
     def __check_service_names(self, request: Union[ProxyRegisterRequest, Filter]) -> List[ServiceInfo]:
         if any(n not in self.__info for n in request.names):
@@ -475,3 +474,11 @@ class RpcServer(RpcServerServiceServicer, RpcManager):
             self.__persist_proxies()
 
         return ResultStatus()
+
+    def wait_shutdown(self):
+        """
+        Waits until server is shutdown
+        """
+
+        # Simply wait for shutdown event
+        self.__shutdown_event.wait()
