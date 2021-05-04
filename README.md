@@ -62,6 +62,8 @@ When the shutdown method is called:
 * if called through RPC, if will wait for the required timeout (using by default the **`rpc-shutdown-timeout`** value), if this one is >0
 * then the shutdown will be finalized (all non-daemon threads terminated)
 
+Note that the code which created the server instance may use the **`wait_shutdown`** method to block until the RPC server is shutdown.
+
 #### Default services
 
 Note that the RPC server instance will automatically serve:
@@ -140,11 +142,8 @@ def start():
     # Create an RPC server on port 12345
     srv = RpcServer(12345, [RpcServiceDescriptor(my_package, "my", MyApiVersion, MySampleManager(), add_MyServiceServicer_to_server, MyServiceStub)])
 
-    # Server is running in its own thread; we need to wait forever (or for interruption event) here
-    ...
-
-    # Shutdown the server
-    srv.shutdown()
+    # Server is running in its own thread; we need to wait it for shutdown (on Ctrl-C or remote shutdown call)
+    srv.wait_shutdown()
 ```
 
 ---

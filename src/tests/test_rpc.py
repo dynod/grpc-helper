@@ -238,12 +238,8 @@ class TestRpcServer(TestUtils):
         t.join()
 
     def wait_for_shutdown(self, timeout: int):
-        init_time = time.time()
-        while (time.time() - init_time) < timeout:
-            if not self.server.is_running:
-                return
-            time.sleep(1)
-        raise AssertionError(f"Server didn't shutdown after {timeout}s")
+        assert self.server.is_running
+        self.server.wait_shutdown()
 
     def test_immediate_shutdown_rpc(self, client):
         # Just ask for immediate server shutdown through RPC
