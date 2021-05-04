@@ -70,7 +70,7 @@ class TestLogs(TestUtils):
                 assert lc.level == LoggerLevel.LVL_UNKNOWN
 
         # Shutdown server
-        self.server.shutdown()
+        self.shutdown_server_instance()
 
     def test_get_missing_params(self, client):
         # Try with bad filters
@@ -193,7 +193,7 @@ class TestLogs(TestUtils):
             self.server.client.log.get(Filter(names=[""]))
 
         # Shutdown
-        self.server.shutdown()
+        self.shutdown_server_instance()
 
         # Verify several logs files are generated
         log_files = list((self.workspace_path / "logs" / "LogsManager").glob("LogsManager.log*"))

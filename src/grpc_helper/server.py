@@ -6,12 +6,12 @@ import traceback
 from concurrent import futures
 from dataclasses import dataclass
 from signal import SIGUSR2, signal
-from threading import Event, Thread, current_thread
+from threading import Event, Thread
 from types import ModuleType
 from typing import Callable, Dict, List, NoReturn, TypeVar, Union
 
 from google.protobuf.internal.enum_type_wrapper import EnumTypeWrapper
-from grpc import Server, server
+from grpc import Server, insecure_channel, server
 
 import grpc_helper
 from grpc_helper.api import (
@@ -37,8 +37,9 @@ from grpc_helper.errors import RpcException
 from grpc_helper.folders import Folders
 from grpc_helper.logs.logs_manager import LogsManager
 from grpc_helper.manager import RpcManager
+from grpc_helper.methods import RpcSimpleMethod, RpcStreamingMethod
 from grpc_helper.static_config import RpcStaticConfig
-from grpc_helper.trace import trace_buffer, trace_rpc
+from grpc_helper.utils import is_streaming, trace_buffer
 
 # Config file name
 PROXY_FILE = "proxy.json"
@@ -49,90 +50,6 @@ class ProxyModel:
     VERSION = "version"
     HOST = "host"
     PORT = "port"
-
-
-class RpcMethod:
-    def __init__(self, name: str, manager: RpcManager, stub: object, return_type: object, info: ServiceInfo, server: object):
-        self.manager_method = getattr(manager, name) if manager is not None else None
-        self.name = name
-        self.logger = manager.logger if manager is not None else logging.getLogger("RpcServer")
-        self.return_type = return_type
-        self.info = info
-        self.server = server
-        self.stub = stub
-
-    def __call__(self, request, context):
-        # Remember call for debug dump
-        input_trace = trace_rpc(True, request, context=context)
-        logged_call = f"Thread 0x{current_thread().ident:016x} -- " + input_trace
-        with self.server.lock:
-            self.server.calls.append(logged_call)
-        self.logger.debug(input_trace)
-
-        try:
-            # Verify API version
-            metadata = {k: v for k, v in context.invocation_metadata()}
-            if "api_version" in metadata:
-                client_version = int(metadata["api_version"])
-                if client_version > self.info.current_api_version:
-                    raise RpcException(
-                        f"Server current API version ({self.info.current_api_version}) is too old for client API version ({client_version})",
-                        rc=ResultCode.ERROR_API_SERVER_TOO_OLD,
-                    )
-                elif client_version < self.info.supported_api_version:
-                    raise RpcException(
-                        f"Client API version ({client_version}) is too old for server supported API version ({self.info.current_api_version})",
-                        rc=ResultCode.ERROR_API_CLIENT_TOO_OLD,
-                    )
-
-            # Proxy?
-            if self.info.is_proxy:
-                # Delegate to remote proxy, if port is set
-                first_try = time.time()
-                while self.info.proxy_port == 0:
-                    # Wait a bit more for proxy registration
-                    if (time.time() - first_try) < RpcStaticConfig.CLIENT_TIMEOUT.float_val:
-                        # Server is not available, and timeout didn't expired yet: sleep and retry
-                        time.sleep(0.5)
-                        self.logger.debug(f"Proxy not registered yet for method {self.name}: wait a bit...")
-                    else:
-                        # Timeout expired... notify the caller
-                        raise RpcException("Proxy didn't registered in time for method call", ResultCode.ERROR_PROXY_UNREGISTERED)
-
-                # Temporary client to proxied server (that won't raise exceptions: let's simply forward the output message to final client)
-                client = RpcClient(
-                    self.info.proxy_host if len(self.info.proxy_host) else RpcStaticConfig.MAIN_HOST.str_val,
-                    self.info.proxy_port,
-                    {"stub": (self.stub, self.info.current_api_version)},
-                    name="proxy",
-                    timeout=RpcStaticConfig.CLIENT_TIMEOUT.float_val,
-                    logger=self.logger,
-                    exception=False,
-                )
-
-                # Call remote method
-                result = getattr(client.stub, self.name)(request)
-            else:
-                # Not a proxy method, delegate to manager
-                result = self.manager_method(request)
-
-        except Exception as e:
-            # Something happened during the RPC execution
-            stack = "".join(traceback.format_tb(e.__traceback__))
-            self.logger.error(f"Exception occurred: {e}\n{stack}")
-
-            # Extract RC if this was a known error
-            rc = e.rc if isinstance(e, RpcException) else ResultCode.ERROR
-
-            # Special case if operation just returns a Result object
-            r = Result(code=rc, msg=str(e), stack=stack)
-            result = ResultStatus(r=r) if self.return_type is None else self.return_type(r=r)
-
-        # Forget call from debug dump
-        with self.server.lock:
-            self.server.calls.remove(logged_call)
-        self.logger.debug(trace_rpc(False, result, context=context))
-        return result
 
 
 class RpcServicer:
@@ -147,22 +64,32 @@ class RpcServicer:
         # Filter on manager methods
         logger = manager.logger if not info.is_proxy else logging.getLogger("RpcServer")
         logger.debug(f"Initializing RPC servicer for {info.name}")
-        for n in filter(lambda x: not x.startswith("_") and callable(getattr(manager, x)), dir(manager)):
+        fake_stub = stub(insecure_channel("localhost:1"))
+        for n in filter(lambda x: not x.startswith("_") and callable(getattr(manager, x)) and hasattr(fake_stub, x), dir(manager)):
             method = getattr(manager, n)
             sig = inspect.signature(method)
             return_type = sig.return_annotation
+
             # Only methods with declared return type + one input parameter (and we're not registering a proxy)
             if return_type != inspect._empty and len(sig.parameters) == 1 and not info.is_proxy:
                 if return_type == Result:  # pragma: no cover
                     raise RpcException(f"Can't declare {n} rpc with Result as a return type; please use Return Status instead", ResultCode.ERROR_PARAM_INVALID)
-                logger.debug(f" >> add method {n} (returns {return_type.__name__})")
-                setattr(self, n, RpcMethod(n, manager, None, return_type, info, server))
-            # Or methods coming from the parent stub
-            elif return_type == inspect._empty and len(sig.parameters) == 2 and all(p in ["request", "context"] for p in sig.parameters.keys()):
+                streaming = is_streaming(fake_stub, n)
+                logger.debug(f" >> add method {n} (returns {return_type}){' [streaming]' if streaming else ''}")
+                setattr(
+                    self,
+                    n,
+                    RpcStreamingMethod(n, manager, None, return_type, info, server)
+                    if streaming
+                    else RpcSimpleMethod(n, manager, None, return_type, info, server),
+                )
+            # Otherwise, methods are coming from the parent stub
+            else:
                 if info.is_proxy:
                     # Register proxy method
-                    logger.debug(f" >> add proxy method {n}")
-                    setattr(self, n, RpcMethod(n, None, stub, None, info, server))
+                    streaming = is_streaming(fake_stub, n)
+                    logger.debug(f" >> add proxy method {n}{' [streaming]' if streaming else ''}")
+                    setattr(self, n, RpcStreamingMethod(n, None, stub, None, info, server) if streaming else RpcSimpleMethod(n, None, stub, None, info, server))
                 else:
                     # Register stub method (not defined in the manager - will raise an exception on runtime)
                     logger.debug(f" >> add stub method {n}")
@@ -389,6 +316,23 @@ class RpcServer(RpcServerServiceServicer, RpcManager):
             timeout = request.timeout if request.timeout > 0 else RpcStaticConfig.SHUTDOWN_TIMEOUT.int_val
             self.logger.warning(f"!!! Will shutdown in {timeout}s !!!")
             time.sleep(timeout)
+
+        # Hack auto client to remove timeout
+        self.client.srv.info.timeout = None
+
+        # Just make sure that client calls are not working anymore with current instance
+        # (Sometimes, it appears that the internal implementation is a bit lazy to close...)
+        self.logger.debug("Trying a last client call to make sure server socket is closed (following ERROR is normal)")
+        while True:
+            try:
+                # Try a client call
+                self.client.srv.info(Filter())
+
+                # Shouldn't get here; if so, wait a bit and retry
+                time.sleep(0.2)  # pragma: no cover
+            except Exception:
+                # Ok, client is closed
+                break
 
         # Removing all rotating loggers
         for descriptor in self.__real_descriptors:

@@ -28,6 +28,10 @@ class TestUtils(TestHelper):
             folders=self.folders if with_workspace else Folders(),
         )
 
+    def shutdown_server_instance(self):
+        # Shutdown server
+        self.server.shutdown()
+
     @pytest.fixture
     def sample_server(self):
         # Start server
@@ -37,7 +41,7 @@ class TestUtils(TestHelper):
         yield self.server
 
         # Shutdown server
-        self.server.shutdown()
+        self.shutdown_server_instance()
 
     @pytest.fixture
     def client(self, sample_server):

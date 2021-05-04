@@ -5,7 +5,7 @@ import signal
 import time
 from pathlib import Path
 from threading import Event, Thread
-from typing import List
+from typing import Iterable, List
 
 import pytest
 
@@ -59,6 +59,20 @@ class SampleServicer(SampleServiceServicer, RpcManager):
     def method4(self, request: SampleRequest) -> SampleResponse:
         self.logger.info(f"request: {request.foo}")
         return SampleResponse(bar=request.foo)
+
+    def s_method1(self, request: Iterable[SampleRequest]) -> ResultStatus:
+        out = ""
+        for req in request:
+            self.logger.info(f"request: {req.foo}")
+            out += req.foo
+        return ResultStatus(r=Result(msg=out))
+
+    def s_method2(self, request: SampleRequest) -> ResultStatus:
+        for foo in ["abc", "def", "ghi", request.foo]:
+            # Raise exception on "error" string
+            if foo == "error":
+                raise RpcException("Sample error occurred", rc=ResultCode.ERROR_CUSTOM)
+            yield ResultStatus(r=Result(msg=foo))
 
 
 class TestRpcServer(TestUtils):
@@ -224,7 +238,7 @@ class TestRpcServer(TestUtils):
 
             # Shutdown server
             logging.warning("-- Calling shutdown from debug thread")
-            self.server.shutdown()
+            self.shutdown_server_instance()
             logging.warning("-- Shutdown returned in debug thread")
 
         t = Thread(target=shutdown_server)
@@ -445,3 +459,62 @@ class TestRpcServer(TestUtils):
         except RpcException as e:
             assert "sample error" in str(e)
             assert e.rc == 12
+
+    def streaming_input(self) -> Iterable[SampleRequest]:
+        for foo in ["abc", "def", "ghi"]:
+            yield SampleRequest(foo=foo)
+
+    def test_input_stream(self, client):
+        # Verify all is OK with input streaming method
+        s = client.sample.s_method1(self.streaming_input())
+        assert s.r.msg == "abcdefghi"
+
+    def test_output_stream(self, client):
+        # Verify all is OK with output streaming method
+        results = False
+        for s in client.sample.s_method2(SampleRequest()):
+            results = True
+            assert s.r.msg in ["abc", "def", "ghi", ""]
+        assert results
+
+    def test_error_stream(self, client):
+        # Verify behavior is ok with server raising an error while streaming
+        results = False
+        try:
+            for s in client.sample.s_method2(SampleRequest(foo="error")):
+                results = True
+                assert s.r.msg in ["abc", "def", "ghi"]
+            raise AssertionError("Shouldn't get here")
+        except RpcException as e:
+            assert e.rc == ResultCode.ERROR_CUSTOM
+        assert results
+
+    def test_not_implemented_stream(self, client):
+        # Verify behavior is ok with server raising an RPC error while streaming
+        results = False
+        try:
+            for _s in client.sample.s_method3(self.streaming_input()):
+                results = True
+            raise AssertionError("Shouldn't get here")
+        except RpcException as e:
+            assert e.rc == ResultCode.ERROR_RPC
+        assert not results
+
+    def test_proxy_input_streaming(self, proxy_server, client):
+        # Register proxy
+        proxy_server.client.srv.proxy_register(ProxyRegisterRequest(names=["sample"], version="123", port=self.rpc_port))
+
+        # Try streaming method
+        s = proxy_server.client.sample.s_method1(self.streaming_input())
+        assert s.r.msg == "abcdefghi"
+
+    def test_proxy_output_streaming(self, proxy_server, client):
+        # Register proxy
+        proxy_server.client.srv.proxy_register(ProxyRegisterRequest(names=["sample"], version="123", port=self.rpc_port))
+
+        # Try streaming method
+        results = False
+        for s in proxy_server.client.sample.s_method2(SampleRequest()):
+            results = True
+            assert s.r.msg in ["abc", "def", "ghi", ""]
+        assert results
