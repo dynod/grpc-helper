@@ -3,6 +3,7 @@ import pwd
 import socket
 import time
 from logging import Logger, getLogger
+from typing import TypeVar
 
 from grpc import RpcError, StatusCode, insecure_channel
 
@@ -12,7 +13,7 @@ from grpc_helper.utils import is_streaming, trace_rpc
 
 
 class RetryMethod:
-    def __init__(self, name: str, stub, channel: str, timeout: float, metadata: tuple, logger: Logger, exception: bool):
+    def __init__(self, name: str, stub, channel: str, timeout: float, metadata: tuple, logger: Logger, exception: bool, custom_exception: TypeVar):
         self.m_name = name
         self.s_name = f"{stub.__class__.__name__}({channel})"
         self.stub = stub
@@ -20,6 +21,7 @@ class RetryMethod:
         self.metadata = metadata
         self.logger = logger
         self.exception = exception
+        self.custom_exception = custom_exception if custom_exception is not None else RpcException
 
     def prelude(self, request):
         trace = trace_rpc(True, request, method=f"{self.s_name}.{self.m_name}")
@@ -39,7 +41,7 @@ class RetryMethod:
     def raise_result(self, result, trace):
         if (hasattr(result, "r") and isinstance(result.r, Result)) and result.r.code != ResultCode.OK and self.exception:
             # Error occurred
-            raise RpcException(f"RPC returned error: {trace}", rc=result.r.code)
+            raise self.custom_exception(f"RPC returned error: {trace}", rc=result.r.code)
 
 
 class RetryStreamingMethod(RetryMethod):
@@ -84,15 +86,15 @@ class RetrySimpleMethod(RetryMethod):
 # Utility class to handle stub retry
 # i.e. permissive stub that allows server to be temporarily unavailable
 class RetryStub:
-    def __init__(self, real_stub, channel: str, timeout: float, metadata: tuple, logger: Logger, exception: bool):
+    def __init__(self, real_stub, channel: str, timeout: float, metadata: tuple, logger: Logger, exception: bool, custom_exception: TypeVar):
         # Fake the stub methods
         for n in filter(lambda x: not x.startswith("__") and callable(getattr(real_stub, x)), dir(real_stub)):
             setattr(
                 self,
                 n,
-                RetryStreamingMethod(n, real_stub, channel, timeout, metadata, logger, exception)
+                RetryStreamingMethod(n, real_stub, channel, timeout, metadata, logger, exception, custom_exception)
                 if is_streaming(real_stub, n)
-                else RetrySimpleMethod(n, real_stub, channel, timeout, metadata, logger, exception),
+                else RetrySimpleMethod(n, real_stub, channel, timeout, metadata, logger, exception, custom_exception),
             )
 
 
@@ -115,10 +117,22 @@ class RpcClient:
         logger:
             Logger instance to be used when logging calls
         exception:
-            Raise RpcException if RPC includes a non-OK Result status
+            Raise RpcException if RPC includes a non-OK ResultCode status
+        custom_exception:
+            Use this provided custom class instead of RpcException when raising non-OK ResultCode exceptions
     """
 
-    def __init__(self, host: str, port: int, stubs_map: dict, timeout: float = 60, name: str = "", logger: Logger = None, exception: bool = True):
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        stubs_map: dict,
+        timeout: float = 60,
+        name: str = "",
+        logger: Logger = None,
+        exception: bool = True,
+        custom_exception: TypeVar = None,
+    ):
         # Prepare metadata for RPC calls
         shared_metadata = [("client", name), ("user", self.get_user()), ("host", socket.gethostname()), ("ip", self.get_ip())]
 
@@ -137,7 +151,7 @@ class RpcClient:
             if ver is not None:
                 metadata.append(("api_version", str(ver)))
             self.logger.debug(f" >> adding {name} stub to client (api version: {ver})")
-            setattr(self, name, RetryStub(typ(channel), channel_str, timeout, tuple(metadata), self.logger, exception))
+            setattr(self, name, RetryStub(typ(channel), channel_str, timeout, tuple(metadata), self.logger, exception, custom_exception))
 
         self.logger.debug(f"RPC client ready for {channel_str}")
 
