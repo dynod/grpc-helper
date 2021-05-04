@@ -161,7 +161,8 @@ The **`RpcClient`** class provides an access to client side of a GRPC service. T
 Optional inputs can also be provided:
 * a timeout if RPC server is unreachable (default: **60s**)
 * a name allowing to identify the client on the server side
-* a boolean flag stating if the client shall raise exceptions when receiving non-OK **`Result`** status (default: **true**)
+* a boolean flag stating if the client shall raise exceptions when receiving non-OK **`ResultCode`** status (default: **true**)
+* an exception type to be raised (instead of **`RpcException`**) when receiving non-OK **`ResultCode`** status
 
 #### Usage example
 
