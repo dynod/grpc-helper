@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from grpc._channel import _StreamStreamMultiCallable, _UnaryStreamMultiCallable
+
 MAX_TRACE_BUFFER_LEN = 1024
 
 
@@ -44,3 +46,9 @@ def trace_rpc(input_rpc: bool, buffer, context=None, method=None) -> tuple:
         return f"[RPC] {peer} >>> {method} ({buffer})"
     else:
         return f"[RPC] {peer} <<< {method}: {buffer}"
+
+
+def is_streaming(stub: object, n: str):
+    # Check if method is streaming output
+    stub_method = getattr(stub, n)
+    return isinstance(stub_method, _UnaryStreamMultiCallable) or isinstance(stub_method, _StreamStreamMultiCallable)

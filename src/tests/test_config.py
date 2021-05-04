@@ -267,7 +267,7 @@ class TestConfig(TestUtils):
         assert item.value == "999"
 
         # Reload to verify persistence
-        self.server.shutdown()
+        self.shutdown_server_instance()
         self.new_server_instance()
 
         # Read again
@@ -278,7 +278,7 @@ class TestConfig(TestUtils):
         assert item.value == "999"
 
         # Reload to verify ignored persistence if no workspace (but update logs folder anyway)
-        self.server.shutdown()
+        self.shutdown_server_instance()
         os.environ["RPC_LOGS_FOLDER"] = (self.test_folder / "custom_log_full_path").as_posix()
         self.new_server_instance(with_workspace=False)
         cfg.unlink()
@@ -292,7 +292,7 @@ class TestConfig(TestUtils):
             json.dump({"my-int-config": "invalid string"}, f)
 
         # Reload to verify invalid value being ignored (and restore default logs folder)
-        self.server.shutdown()
+        self.shutdown_server_instance()
         del os.environ["RPC_LOGS_FOLDER"]
         self.new_server_instance()
         self.check_logs("Can't load invalid persisted value 'invalid string' for config item my-int-config")

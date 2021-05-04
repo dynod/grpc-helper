@@ -1,65 +1,99 @@
-import logging
 import os
 import pwd
 import socket
 import time
-from logging import Logger
+from logging import Logger, getLogger
 
 from grpc import RpcError, StatusCode, insecure_channel
 
 from grpc_helper.api import Result, ResultCode
 from grpc_helper.errors import RpcException
-from grpc_helper.trace import trace_rpc
+from grpc_helper.utils import is_streaming, trace_rpc
+
+
+class RetryMethod:
+    def __init__(self, name: str, stub, channel: str, timeout: float, metadata: tuple, logger: Logger, exception: bool):
+        self.m_name = name
+        self.s_name = f"{stub.__class__.__name__}({channel})"
+        self.stub = stub
+        self.timeout = timeout
+        self.metadata = metadata
+        self.logger = logger
+        self.exception = exception
+
+    def prelude(self, request):
+        trace = trace_rpc(True, request, method=f"{self.s_name}.{self.m_name}")
+        self.logger.debug(trace)
+        return (trace, time.time())
+
+    def handle_exception(self, trace: str, first_try, e: RpcError):
+        if e.code() == StatusCode.UNAVAILABLE and self.timeout is not None and (time.time() - first_try) < self.timeout:
+            # Server is not available, and timeout didn't expired yet: sleep and retry
+            time.sleep(0.5)
+            self.logger.debug(f"<RPC> >> {self.s_name}.{self.m_name}... (retry because of 'unavailable' error; details: '{e.details()}')")
+        else:
+            # Timed out or any other reason: raise exception
+            self.logger.error(f"<RPC> >> {self.s_name}.{self.m_name} error: {str(e)}")
+            raise RpcException(f"RPC error (on {trace}): {e}", rc=ResultCode.ERROR_RPC)
+
+    def raise_result(self, result, trace):
+        if (hasattr(result, "r") and isinstance(result.r, Result)) and result.r.code != ResultCode.OK and self.exception:
+            # Error occurred
+            raise RpcException(f"RPC returned error: {trace}", rc=result.r.code)
+
+
+class RetryStreamingMethod(RetryMethod):
+    def __call__(self, request):
+        # Call prelude
+        trace, first_try = self.prelude(request)
+
+        # Loop to handle retries
+        while True:
+            try:
+                # Call real stub method, with metadata
+                for result in getattr(self.stub, self.m_name)(request, metadata=self.metadata):
+                    out_trace = trace_rpc(False, result, method=f"{self.s_name}.{self.m_name}")
+                    self.logger.debug(out_trace)
+                    self.raise_result(result, out_trace)
+                    yield result
+                break
+            except RpcError as e:
+                self.handle_exception(trace, first_try, e)
+
+
+class RetrySimpleMethod(RetryMethod):
+    def __call__(self, request):
+        # Call prelude
+        trace, first_try = self.prelude(request)
+
+        # Loop to handle retries
+        while True:
+            try:
+                # Call real stub method, with metadata
+                result = getattr(self.stub, self.m_name)(request, metadata=self.metadata)
+                out_trace = trace_rpc(False, result, method=f"{self.s_name}.{self.m_name}")
+                self.logger.debug(out_trace)
+
+                # May raise an exception...
+                self.raise_result(result, out_trace)
+                return result
+            except RpcError as e:
+                self.handle_exception(trace, first_try, e)
 
 
 # Utility class to handle stub retry
 # i.e. permissive stub that allows server to be temporarily unavailable
 class RetryStub:
-    class RetryMethod:
-        def __init__(self, name: str, stub, channel: str, timeout: float, metadata: tuple, logger: Logger, exception: bool):
-            self.m_name = name
-            self.s_name = f"{stub.__class__.__name__}({channel})"
-            self.stub = stub
-            self.timeout = timeout
-            self.metadata = metadata
-            self.logger = logger
-            self.exception = exception
-
-        def __call__(self, request):
-            trace = trace_rpc(True, request, method=f"{self.s_name}.{self.m_name}")
-            self.logger.debug(trace)
-            first_try = time.time()
-
-            # Loop to handle retries
-            while True:
-                try:
-                    # Call real stub method, with metadata
-                    result = getattr(self.stub, self.m_name)(request, metadata=self.metadata)
-                    break
-                except RpcError as e:
-                    if e.code() == StatusCode.UNAVAILABLE and self.timeout is not None and (time.time() - first_try) < self.timeout:
-                        # Server is not available, and timeout didn't expired yet: sleep and retry
-                        time.sleep(0.5)
-                        self.logger.debug(f"<RPC> >> {self.s_name}.{self.m_name}... (retry because of 'unavailable' error; details: '{e.details()}')")
-                    else:
-                        # Timed out or any other reason: raise exception
-                        self.logger.error(f"<RPC> >> {self.s_name}.{self.m_name} error: {str(e)}")
-                        raise RpcException(f"RPC error (on {trace}): {e}", rc=ResultCode.ERROR_RPC)
-
-            trace = trace_rpc(False, result, method=f"{self.s_name}.{self.m_name}")
-            self.logger.debug(trace)
-
-            # May raise an exception...
-            if (hasattr(result, "r") and isinstance(result.r, Result)) and result.r.code != ResultCode.OK and self.exception:
-                # Error occurred
-                raise RpcException(f"RPC returned error: {trace}", rc=result.r.code)
-
-            return result
-
     def __init__(self, real_stub, channel: str, timeout: float, metadata: tuple, logger: Logger, exception: bool):
         # Fake the stub methods
         for n in filter(lambda x: not x.startswith("__") and callable(getattr(real_stub, x)), dir(real_stub)):
-            setattr(self, n, RetryStub.RetryMethod(n, real_stub, channel, timeout, metadata, logger, exception))
+            setattr(
+                self,
+                n,
+                RetryStreamingMethod(n, real_stub, channel, timeout, metadata, logger, exception)
+                if is_streaming(real_stub, n)
+                else RetrySimpleMethod(n, real_stub, channel, timeout, metadata, logger, exception),
+            )
 
 
 class RpcClient:
@@ -89,7 +123,7 @@ class RpcClient:
         shared_metadata = [("client", name), ("user", self.get_user()), ("host", socket.gethostname()), ("ip", self.get_ip())]
 
         # Prepare logger
-        self.logger = logger if logger is not None else logging.getLogger("RpcClient")
+        self.logger = logger if logger is not None else getLogger("RpcClient")
 
         # Create channel
         channel_str = f"{host}:{port}"
