@@ -40,3 +40,8 @@ service SampleService {
     rpc s_method2 (SampleRequest) returns (stream ResultStatus);
     rpc s_method3 (stream SampleRequest) returns (stream ResultStatus);
 }
+
+// Another sample service
+service AnotherSampleService {
+    rpc method10 (Empty) returns (ResultStatus);
+}

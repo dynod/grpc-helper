@@ -2,8 +2,9 @@ import os
 from pathlib import Path
 from typing import Dict, List
 
-from grpc_helper.api import ConfigStatus, ConfigUpdate, Filter, ResultCode
-from grpc_helper.api.config_pb2_grpc import ConfigServiceServicer
+from grpc_helper.api import ConfigApiVersion, ConfigItem, ConfigStatus, ConfigUpdate, Filter, ResultCode
+from grpc_helper.api.config_pb2_grpc import ConfigServiceServicer, ConfigServiceStub
+from grpc_helper.client import RpcClient
 from grpc_helper.config.cfg_item import Config
 from grpc_helper.errors import RpcException
 from grpc_helper.folders import Folders
@@ -123,7 +124,7 @@ class ConfigManager(ConfigServiceServicer, RpcManager):
         # Persist non-default public values
         self._save_config({i.name: i.str_val for i in filter(lambda i: i.str_val != i.default_value, self.user_items.values())})
 
-    def __check_items(self, input_names: list, empty_ok: bool):
+    def __check_items(self, input_names: list, items_to_check: dict, ignore_unknown: bool, empty_ok: bool = False):
         # Check for empty list
         if not empty_ok and len(input_names) == 0:
             raise RpcException("Input request list is empty", ResultCode.ERROR_PARAM_MISSING)
@@ -133,61 +134,110 @@ class ConfigManager(ConfigServiceServicer, RpcManager):
             raise RpcException("At least one empty name found in input request", ResultCode.ERROR_PARAM_MISSING)
 
         # Check filter for unknown items
-        unknown_items = list(filter(lambda n: n not in self.user_items.keys(), input_names))
-        if len(unknown_items):
+        unknown_items = list(filter(lambda n: n not in items_to_check.keys(), input_names))
+        if not ignore_unknown and len(unknown_items):
             raise RpcException("Unknown config item names in filter request: " + ", ".join(unknown_items), ResultCode.ERROR_ITEM_UNKNOWN)
 
-    def __build_status(self, names: List[str]) -> ConfigStatus:
-        # Build filtered output status
-        return ConfigStatus(items=list(map(lambda n: self.user_items[n].item, names)))
+    def __filter_items(self, names: List[str]) -> List[ConfigItem]:
+        return list(map(lambda x: self.user_items[x].item, filter(lambda x: x in self.user_items, names if len(names) else self.user_items.keys())))
+
+    def __merged_items(self, names: List[str], check_conflicts: bool = False) -> Dict[str, ConfigItem]:
+        # Delegate to all proxied servers + merge with local items
+        merged_items = {}
+        dump_all_filter = Filter(names=names, ignore_unknown=True)
+
+        # Dump items from proxied clients
+        items_dumps = [self.__filter_items(names)]
+        for client in self.__proxied_config_clients:
+            self.logger.debug(f"Dump items from remote ({client.target_host})")
+            items_dumps.append(client.config.get(dump_all_filter).items)
+
+        # Iterate on dumps
+        for items_dump in items_dumps:
+            # Merge proxied items
+            for item in items_dump:
+                if item.name in merged_items:
+                    if item.value != merged_items[item.name].value and check_conflicts:
+                        # Conflict between services; needs to be raised as an error
+                        raise RpcException(
+                            f"Proxied values conflict for config item {item.name}: {item.value} != {merged_items[item.name].value}",
+                            rc=ResultCode.ERROR_ITEM_CONFLICT,
+                        )
+                    else:
+                        self.logger.debug(f"Item {item.name} (value: {item.value}) already merged; keep previous value ({merged_items[item.name].value})")
+                else:
+                    # Grab this proxied item
+                    merged_items[item.name] = item
+                    self.logger.debug(f"Item {item.name} merged (value: {item.value})")
+        return merged_items
 
     def get(self, request: Filter) -> ConfigStatus:
         """
         Get configuration items, according to input filter
         """
 
-        # Basic checks
-        self.__check_items(request.names, True)
-
         with self.lock:
+            # Basic checks
+            merged_items = self.__merged_items(request.names, True)
+            self.__check_items(request.names, merged_items, request.ignore_unknown, True)
+
             # Return filtered list
-            return self.__build_status(request.names)
+            return ConfigStatus(items=merged_items.values())
 
     def reset(self, request: Filter) -> ConfigStatus:
         """
         Reset configuration items, according to input filter
         """
 
-        # Basic checks
-        self.__check_items(request.names, False)
-
         with self.lock:
-            # Reset all request items to their default values
-            for name in request.names:
+            # Basic checks
+            merged_items = self.__merged_items(request.names, False)
+            self.__check_items(request.names, merged_items, request.ignore_unknown)
+
+            # Delegate to proxied servers
+            for client in self.__proxied_config_clients:
+                self.logger.debug(f"Reset items on remote ({client.target_host})")
+                client.config.reset(Filter(names=request.names, ignore_unknown=True))
+
+            # Reset all local items to their default values
+            for name in filter(lambda n: n in self.user_items, request.names):
                 self.user_items[name].reset()
 
-            # Return filtered list
-            return self.__build_status(request.names)
+            # Get again to build returned values
+            merged_items = self.__merged_items(request.names, True)
+            return ConfigStatus(items=merged_items.values())
 
     def set(self, request: ConfigUpdate) -> ConfigStatus:  # NOQA:A003
         """
         Update configuration items, according to input request
         """
 
-        # Basic checks
-        req_map = {r.name: r.value for r in request.items}
-        self.__check_items(req_map.keys(), False)
-
-        # Validate items new values
-        for name, value in req_map.items():
-            self.user_items[name].validate(name, value)
-
         with self.lock:
-            # Ok, update values
-            for name, value in req_map.items():
+            # Basic checks
+            req_map = {r.name: r.value for r in request.items}
+            merged_items = self.__merged_items(req_map.keys(), False)
+            self.__check_items(req_map.keys(), merged_items, request.ignore_unknown)
+
+            # Validate local items new values
+            for name, value in filter(lambda tpl: tpl[0] in self.user_items, req_map.items()):
+                self.user_items[name].validate(name, value)
+
+            # Delegate to proxied servers
+            for client in self.__proxied_config_clients:
+                self.logger.debug(f"Set items on remote ({client.target_host})")
+                client.config.set(ConfigUpdate(items=list(request.items), ignore_unknown=True))
+
+            # Finally, update local values
+            for name, value in filter(lambda tpl: tpl[0] in self.user_items, req_map.items()):
                 self.user_items[name].update(value)
 
-            # Persist updated values
+            # Persist updated local values
             self.__persist()
 
-            return self.__build_status(req_map.keys())
+            # Get again to build returned values
+            merged_items = self.__merged_items(req_map.keys(), True)
+            return ConfigStatus(items=merged_items.values())
+
+    @property
+    def __proxied_config_clients(self) -> List[RpcClient]:
+        return self._proxied_clients({"config": (ConfigServiceStub, ConfigApiVersion.CONFIG_API_CURRENT)})

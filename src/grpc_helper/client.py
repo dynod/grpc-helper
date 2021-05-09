@@ -140,9 +140,9 @@ class RpcClient:
         self.logger = logger if logger is not None else getLogger("RpcClient")
 
         # Create channel
-        channel_str = f"{host}:{port}"
-        self.logger.debug(f"Initializing RPC client for {channel_str}")
-        channel = insecure_channel(channel_str)
+        self.target_host = f"{host}:{port}"
+        self.logger.debug(f"Initializing RPC client for {self.target_host}")
+        channel = insecure_channel(self.target_host)
 
         # Handle stubs hooking
         for name, typ_n_ver in stubs_map.items():
@@ -151,9 +151,9 @@ class RpcClient:
             if ver is not None:
                 metadata.append(("api_version", str(ver)))
             self.logger.debug(f" >> adding {name} stub to client (api version: {ver})")
-            setattr(self, name, RetryStub(typ(channel), channel_str, timeout, tuple(metadata), self.logger, exception, custom_exception))
+            setattr(self, name, RetryStub(typ(channel), self.target_host, timeout, tuple(metadata), self.logger, exception, custom_exception))
 
-        self.logger.debug(f"RPC client ready for {channel_str}")
+        self.logger.debug(f"RPC client ready for {self.target_host}")
 
     def get_ip(self):
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
