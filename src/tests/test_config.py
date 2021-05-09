@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from grpc_helper import Folders, RpcException
-from grpc_helper.api import ConfigItemUpdate, ConfigUpdate, ConfigValidator, Filter, ResultCode
+from grpc_helper.api import ConfigItemUpdate, ConfigUpdate, ConfigValidator, Filter, ProxyRegisterRequest, ResultCode
 from grpc_helper.config import Config, ConfigHolder
 from grpc_helper.config.cfg_manager import ConfigManager
 from grpc_helper.server import RpcStaticConfig
@@ -13,6 +13,10 @@ from tests.utils import TestUtils
 
 
 class SampleConfig(ConfigHolder):
+    INT_ITEM = Config(name="my-int-config", description="sample int configuration", default_value="12", validator=ConfigValidator.CONFIG_VALID_INT)
+
+
+class Sample2Config(ConfigHolder):
     INT_ITEM = Config(name="my-int-config", description="sample int configuration", default_value="12", validator=ConfigValidator.CONFIG_VALID_INT)
 
 
@@ -195,6 +199,10 @@ class TestConfig(TestUtils):
     def user_items(self) -> list:
         return [SampleConfig]
 
+    @property
+    def user_items2(self) -> list:
+        return [Sample2Config]
+
     def test_get_empty(self, client):
         # Try to get items with empty request
         try:
@@ -213,7 +221,7 @@ class TestConfig(TestUtils):
 
     def test_get_ok(self, client):
         # Get item
-        s = client.config.get(Filter(names=["my-int-config"]))
+        s = client.config.get(Filter())
         assert len(s.items) == 1
         item = s.items[0]
         assert item.name == "my-int-config"
@@ -331,3 +339,70 @@ class TestConfig(TestUtils):
         item = s.items[0]
         assert item.name == "my-int-config"
         assert item.value == "12"
+
+    def test_proxy_config_get(self, proxy_server, client, another_server):
+        # Register proxies
+        proxy_server.client.srv.proxy_register(ProxyRegisterRequest(names=["sample"], version="123", port=self.rpc_port))
+        proxy_server.client.srv.proxy_register(ProxyRegisterRequest(names=["sample2"], version="123", port=self.rpc_another_port))
+
+        # Read (all values shall be the same)
+        for c in (client, another_server.client, proxy_server.client):
+            s = c.config.get(Filter(names=["my-int-config"]))
+            assert len(s.items) == 1
+            item = s.items[0]
+            assert item.name == "my-int-config"
+            assert item.value == "12"
+
+    def test_proxy_config_set_n_reset(self, proxy_server, client, another_server):
+        # Register proxies
+        proxy_server.client.srv.proxy_register(ProxyRegisterRequest(names=["sample"], version="123", port=self.rpc_port))
+        proxy_server.client.srv.proxy_register(ProxyRegisterRequest(names=["sample2"], version="123", port=self.rpc_another_port))
+
+        # Set in proxy
+        s = proxy_server.client.config.set(ConfigUpdate(items=[ConfigItemUpdate(name="my-int-config", value="789")]))
+        assert len(s.items) == 1
+        item = s.items[0]
+        assert item.name == "my-int-config"
+        assert item.value == "789"
+
+        # Read (all values shall be the same)
+        for c in (client, another_server.client, proxy_server.client):
+            s = c.config.get(Filter(names=["my-int-config"]))
+            assert len(s.items) == 1
+            item = s.items[0]
+            assert item.name == "my-int-config"
+            assert item.value == "789"
+
+        # Reset
+        s = proxy_server.client.config.reset(Filter(names=["my-int-config"]))
+        assert len(s.items) == 1
+        item = s.items[0]
+        assert item.name == "my-int-config"
+        assert item.value == "12"
+
+        # Read (all values shall be the same)
+        for c in (client, another_server.client, proxy_server.client):
+            s = c.config.get(Filter(names=["my-int-config"]))
+            assert len(s.items) == 1
+            item = s.items[0]
+            assert item.name == "my-int-config"
+            assert item.value == "12"
+
+    def test_proxy_config_conflict(self, proxy_server, client, another_server):
+        # Register proxies
+        proxy_server.client.srv.proxy_register(ProxyRegisterRequest(names=["sample"], version="123", port=self.rpc_port))
+        proxy_server.client.srv.proxy_register(ProxyRegisterRequest(names=["sample2"], version="123", port=self.rpc_another_port))
+
+        # Update only on one proxied server
+        s = another_server.client.config.set(ConfigUpdate(items=[ConfigItemUpdate(name="my-int-config", value="1024")]))
+        assert len(s.items) == 1
+        item = s.items[0]
+        assert item.name == "my-int-config"
+        assert item.value == "1024"
+
+        # Read while values are different in proxied servers: conflict
+        try:
+            proxy_server.client.config.get(Filter(names=["my-int-config"]))
+            raise AssertionError("shouldn't get here")
+        except RpcException as e:
+            assert e.rc == ResultCode.ERROR_ITEM_CONFLICT

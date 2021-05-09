@@ -7,8 +7,6 @@ from pathlib import Path
 from threading import Event, Thread
 from typing import Iterable, List
 
-import pytest
-
 import grpc_helper
 from grpc_helper import Folders, RpcClient, RpcException, RpcManager, RpcServer, RpcServiceDescriptor
 from grpc_helper.api import (
@@ -272,42 +270,6 @@ class TestRpcServer(TestUtils):
         # Check logs
         self.check_logs("!!! Will shutdown in 1s !!!")
 
-    @property
-    def proxy_port(self) -> int:
-        return self.rpc_port + 50
-
-    def new_proxy_server(self):
-        self.proxy_server = RpcServer(
-            self.proxy_port,
-            [
-                # Proxy service definition for sample service
-                RpcServiceDescriptor(
-                    grpc_helper, "sample", SampleApiVersion, SampleServiceServicer(), add_SampleServiceServicer_to_server, SampleServiceStub, True
-                )
-            ],
-            folders=Folders(workspace=self.proxy_workspace),
-        )
-        return self.proxy_server
-
-    @property
-    def proxy_workspace(self):
-        return self.test_folder / "wks_proxy"
-
-    @pytest.fixture
-    def proxy_server(self):
-        # Short timeout for unregistered proxy
-        os.environ["RPC_CLIENT_TIMEOUT"] = "2"
-
-        # Prepare proxy
-        self.new_proxy_server()
-
-        # back to test
-        yield self.proxy_server
-
-        # Shutdown server
-        self.proxy_server.shutdown()
-        del os.environ["RPC_CLIENT_TIMEOUT"]
-
     def test_unregistered_proxy(self, proxy_server: RpcServer):
         # Try a client call
         try:
@@ -518,3 +480,22 @@ class TestRpcServer(TestUtils):
             results = True
             assert s.r.msg in ["abc", "def", "ghi", ""]
         assert results
+
+    def test_proxied_servers(self, proxy_server, client, another_server):
+        # No proxied servers
+        assert len(proxy_server._proxied_servers) == 0
+
+        # Register proxy
+        proxy_server.client.srv.proxy_register(ProxyRegisterRequest(names=["sample"], version="123", port=self.rpc_port))
+
+        # One proxied server
+        assert len(proxy_server._proxied_servers) == 1
+        assert ("localhost", self.rpc_port) in proxy_server._proxied_servers
+
+        # Register another proxy
+        proxy_server.client.srv.proxy_register(ProxyRegisterRequest(names=["sample2"], version="123", port=self.rpc_another_port))
+
+        # Two proxied servers
+        assert len(proxy_server._proxied_servers) == 2
+        assert ("localhost", self.rpc_port) in proxy_server._proxied_servers
+        assert ("localhost", self.rpc_another_port) in proxy_server._proxied_servers

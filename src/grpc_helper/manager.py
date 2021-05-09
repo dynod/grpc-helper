@@ -4,9 +4,9 @@ import os
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from threading import RLock
-from typing import Callable
+from typing import Callable, List, Set, Tuple
 
-from grpc_helper.api import ResultCode
+from grpc_helper.api import Filter, ResultCode
 from grpc_helper.client import RpcClient
 from grpc_helper.errors import RpcException
 from grpc_helper.folders import Folders
@@ -118,3 +118,18 @@ class RpcManager:
                 json.dump(config, f, indent=4)
         else:
             self.logger.warn("No workspace defined; skip config persistence")
+
+    @property
+    def _proxied_servers(self) -> Set[Tuple[str, int]]:
+        # Tuples of remote RPC server host,port for each registered proxied service
+        proxied_servers = set()
+        for service_info in filter(lambda si: si.is_proxy and si.proxy_port > 0, self.client.srv.info(Filter()).items):
+            proxied_servers.add((service_info.proxy_host if len(service_info.proxy_host) else RpcStaticConfig.MAIN_HOST.str_val, service_info.proxy_port))
+        return proxied_servers
+
+    def _proxied_clients(self, stubs_map: dict) -> List[RpcClient]:
+        # Map proxied servers to clients
+        out = []
+        for host, port in self._proxied_servers:
+            out.append(RpcClient(host, port, stubs_map, name=type(self).__name__, timeout=RpcStaticConfig.CLIENT_TIMEOUT.float_val, logger=self.logger))
+        return out
