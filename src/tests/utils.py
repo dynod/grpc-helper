@@ -1,11 +1,12 @@
 import os
 from pathlib import Path
+from typing import List
 
 import pytest
 from pytest_multilog import TestHelper
 
 import grpc_helper
-from grpc_helper import Folders, RpcManager, RpcServer, RpcServiceDescriptor
+from grpc_helper import Folders, RpcProxiedManager, RpcServer, RpcServiceDescriptor, RpcStaticConfig
 from tests.api import SampleApiVersion
 from tests.api.sample_pb2_grpc import (
     AnotherSampleServiceServicer,
@@ -124,24 +125,39 @@ class TestUtils(TestHelper):
     def rpc_another_port(self) -> int:
         return self.rpc_port + 100
 
-    @pytest.fixture
-    def another_server(self):
-        # Start server
-        another = RpcServer(
+    def start_another_server(self, use_ip: bool):
+        return RpcServer(
             self.rpc_another_port,
             [
                 RpcServiceDescriptor(
                     grpc_helper,
                     "sample2",
                     SampleApiVersion,
-                    AnotherSampleServicer(),
+                    AnotherSampleServicer2() if use_ip else AnotherSampleServicer(),
                     add_AnotherSampleServiceServicer_to_server,
                     AnotherSampleServiceStub,
                 )
             ],
             user_items=self.user_items2,
             folders=Folders(workspace=self.test_folder / "wks_another"),
+            cli_config={RpcStaticConfig.MAIN_PORT.name: str(self.proxy_port)},
         )
+
+    @pytest.fixture
+    def another_server(self, proxy_server):
+        # Start server
+        another = self.start_another_server(False)
+
+        # Yield to test
+        yield another
+
+        # Shutdown server
+        another.shutdown()
+
+    @pytest.fixture
+    def another_server2(self, proxy_server):
+        # Start server
+        another = self.start_another_server(True)
 
         # Yield to test
         yield another
@@ -150,5 +166,20 @@ class TestUtils(TestHelper):
         another.shutdown()
 
 
-class AnotherSampleServicer(AnotherSampleServiceServicer, RpcManager):
-    pass
+class AnotherSampleServicer(AnotherSampleServiceServicer, RpcProxiedManager):
+    def _proxied_services(self) -> List[str]:
+        return ["sample2"]
+
+    def _proxied_version(self) -> str:
+        return "123"
+
+
+class AnotherSampleServicer2(AnotherSampleServiceServicer, RpcProxiedManager):
+    def _proxied_services(self) -> List[str]:
+        return ["sample2"]
+
+    def _proxied_version(self) -> str:
+        return "123"
+
+    def _proxy_use_current_host(self) -> bool:
+        return True

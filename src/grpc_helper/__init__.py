@@ -18,7 +18,8 @@ from grpc_helper.cli import RpcCliParser
 from grpc_helper.client import RpcClient
 from grpc_helper.errors import RpcException
 from grpc_helper.folders import Folders
-from grpc_helper.manager import RpcManager
+from grpc_helper.manager import RpcManager, RpcProxiedManager
 from grpc_helper.server import RpcServer, RpcServiceDescriptor
+from grpc_helper.static_config import RpcStaticConfig
 
-__all__ = ["RpcServer", "RpcServiceDescriptor", "RpcClient", "RpcException", "RpcManager", "Folders", "RpcCliParser"]
+__all__ = ["RpcServer", "RpcServiceDescriptor", "RpcClient", "RpcException", "RpcManager", "RpcProxiedManager", "Folders", "RpcCliParser", "RpcStaticConfig"]
