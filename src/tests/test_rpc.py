@@ -481,21 +481,22 @@ class TestRpcServer(TestUtils):
             assert s.r.msg in ["abc", "def", "ghi", ""]
         assert results
 
-    def test_proxied_servers(self, proxy_server, client, another_server):
-        # No proxied servers
-        assert len(proxy_server._proxied_servers) == 0
+    def test_proxied_servers_localhost(self, proxy_server, client, another_server):
+        # One proxied server
+        assert len(proxy_server._proxied_servers) == 1
+        assert ("localhost", self.rpc_another_port) in proxy_server._proxied_servers
 
         # Register proxy
         proxy_server.client.srv.proxy_register(ProxyRegisterRequest(names=["sample"], version="123", port=self.rpc_port))
-
-        # One proxied server
-        assert len(proxy_server._proxied_servers) == 1
-        assert ("localhost", self.rpc_port) in proxy_server._proxied_servers
-
-        # Register another proxy
-        proxy_server.client.srv.proxy_register(ProxyRegisterRequest(names=["sample2"], version="123", port=self.rpc_another_port))
 
         # Two proxied servers
         assert len(proxy_server._proxied_servers) == 2
         assert ("localhost", self.rpc_port) in proxy_server._proxied_servers
         assert ("localhost", self.rpc_another_port) in proxy_server._proxied_servers
+
+    def test_proxied_servers_ip(self, proxy_server, client, another_server2):
+        # One proxied server, with real ip
+        assert len(proxy_server._proxied_servers) == 1
+        host, port = proxy_server._proxied_servers.pop()
+        assert self.rpc_another_port == port
+        assert len(host.split(".")) == 4

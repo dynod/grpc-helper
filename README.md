@@ -101,6 +101,13 @@ end with an **`ERROR_PROXY_UNREGISTERED`** error.
 
 Configuration of proxied services is persisted in the workspace, in order to restore them when the proxying server restarts.
 
+An **`RpcProxiedManager`** abstract class is available for managers who are designed to be proxied. Such managers will automatically register in main proxy
+server, with following details:
+* registered services names list has to be returned by **`_proxied_services`** method
+* registered services version string has to be returned by **`_proxied_version`** method
+* extra stubs available in the **`self.proxy_client`** attribute can be provided by **`_proxy_stubs`** method
+* if current host IP needs excpilicitely to be used for registration, **`_proxy_use_current_host`** method needs to return **`True`**
+
 #### Rolling logs
 
 Each manager of the RPC server through its **`logger`** attribute, will have his logs persisted in a **\<name\>/\<name\>.log** rolling file (relative to the 

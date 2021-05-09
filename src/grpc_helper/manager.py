@@ -1,12 +1,15 @@
 import json
 import logging
 import os
+import socket
+from abc import ABC, abstractmethod
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from threading import RLock
 from typing import Callable, List, Set, Tuple
 
-from grpc_helper.api import Filter, ResultCode
+from grpc_helper.api import Filter, ProxyRegisterRequest, ResultCode, ServerApiVersion
+from grpc_helper.api.server_pb2_grpc import RpcServerServiceStub
 from grpc_helper.client import RpcClient
 from grpc_helper.errors import RpcException
 from grpc_helper.folders import Folders
@@ -63,9 +66,10 @@ class RpcManager:
         for handler in filter(lambda h: isinstance(h, TimedRotatingFileHandler), logger.handlers):
             logger.removeHandler(handler)
 
-    def _init_folders_n_logger(self, folders: Folders):
-        # Remember folders
+    def _init_folders_n_logger(self, folders: Folders, port: int):
+        # Remember folders and port
         self.folders = folders if folders is not None else Folders()
+        self.port = port
 
         # Prepare handler
         self._add_rotating_handler(self.logger)
@@ -132,4 +136,61 @@ class RpcManager:
         out = []
         for host, port in self._proxied_servers:
             out.append(RpcClient(host, port, stubs_map, name=type(self).__name__, timeout=RpcStaticConfig.CLIENT_TIMEOUT.float_val, logger=self.logger))
+        return out
+
+
+class RpcProxiedManager(RpcManager, ABC):
+    def _proxy_stubs(self) -> dict:
+        """
+        Dict of stubs to be added to proxy_client
+        """
+        return {}
+
+    @abstractmethod
+    def _proxied_services(self) -> List[str]:  # pragma: no cover
+        """
+        List of service names to be proxied
+        """
+        pass
+
+    @abstractmethod
+    def _proxied_version(self) -> str:  # pragma: no cover
+        """
+        Version of proxied service
+        """
+        pass
+
+    @property
+    def _proxy_use_current_host(self) -> bool:
+        """
+        States if proxy registration should use current host IP or not (default)
+        """
+        return False
+
+    def _load(self):
+        # Prepare proxy client
+        stubs_map = {"srv": (RpcServerServiceStub, ServerApiVersion.SERVER_API_CURRENT)}
+        stubs_map.update(self._proxy_stubs())
+        self.proxy_client = RpcClient(RpcStaticConfig.MAIN_HOST.str_val, RpcStaticConfig.MAIN_PORT.int_val, stubs_map)
+
+        # Register in proxy
+        self.proxy_client.srv.proxy_register(
+            ProxyRegisterRequest(
+                names=self._proxied_services(),
+                version=self._proxied_version(),
+                host=self.__current_ip if self._proxy_use_current_host else RpcStaticConfig.MAIN_HOST.str_val,
+                port=self.port,
+            )
+        )
+
+    @property
+    def __current_ip(self):
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(("8.8.8.8", 1))
+            out = s.getsockname()[0]
+        except Exception:  # pragma: no cover
+            out = RpcStaticConfig.MAIN_HOST.str_val
+        finally:
+            s.close()
         return out

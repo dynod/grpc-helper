@@ -343,7 +343,6 @@ class TestConfig(TestUtils):
     def test_proxy_config_get(self, proxy_server, client, another_server):
         # Register proxies
         proxy_server.client.srv.proxy_register(ProxyRegisterRequest(names=["sample"], version="123", port=self.rpc_port))
-        proxy_server.client.srv.proxy_register(ProxyRegisterRequest(names=["sample2"], version="123", port=self.rpc_another_port))
 
         # Read (all values shall be the same)
         for c in (client, another_server.client, proxy_server.client):
@@ -356,7 +355,6 @@ class TestConfig(TestUtils):
     def test_proxy_config_set_n_reset(self, proxy_server, client, another_server):
         # Register proxies
         proxy_server.client.srv.proxy_register(ProxyRegisterRequest(names=["sample"], version="123", port=self.rpc_port))
-        proxy_server.client.srv.proxy_register(ProxyRegisterRequest(names=["sample2"], version="123", port=self.rpc_another_port))
 
         # Set in proxy
         s = proxy_server.client.config.set(ConfigUpdate(items=[ConfigItemUpdate(name="my-int-config", value="789")]))
@@ -391,7 +389,6 @@ class TestConfig(TestUtils):
     def test_proxy_config_conflict(self, proxy_server, client, another_server):
         # Register proxies
         proxy_server.client.srv.proxy_register(ProxyRegisterRequest(names=["sample"], version="123", port=self.rpc_port))
-        proxy_server.client.srv.proxy_register(ProxyRegisterRequest(names=["sample2"], version="123", port=self.rpc_another_port))
 
         # Update only on one proxied server
         s = another_server.client.config.set(ConfigUpdate(items=[ConfigItemUpdate(name="my-int-config", value="1024")]))

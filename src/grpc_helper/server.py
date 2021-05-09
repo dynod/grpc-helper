@@ -184,7 +184,7 @@ class RpcServer(RpcServerServiceServicer, RpcManager):
         for descriptor in self.descriptors:
             # Prepare folders and logger (only for non-proxy)
             if not descriptor.is_proxy:
-                descriptor.manager._init_folders_n_logger(folders)
+                descriptor.manager._init_folders_n_logger(folders, port)
 
             # Persisted model?
             persisted_model = proxies_model[descriptor.name] if descriptor.name in proxies_model else None
@@ -352,9 +352,9 @@ class RpcServer(RpcServerServiceServicer, RpcManager):
         # Just build message from stored info
         return MultiServiceInfo(items=services)
 
-    def _init_folders_n_logger(self, folders: Folders):
+    def _init_folders_n_logger(self, folders: Folders, port: int):
         # Override to process root logger as well
-        super()._init_folders_n_logger(folders)
+        super()._init_folders_n_logger(folders, port)
         self._add_rotating_handler(logging.getLogger())
 
     @property
