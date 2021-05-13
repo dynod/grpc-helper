@@ -194,3 +194,7 @@ class RpcProxiedManager(RpcManager, ABC):
         finally:
             s.close()
         return out
+
+    def _shutdown(self):
+        # Forget from proxy
+        self.proxy_client.srv.proxy_forget(Filter(names=self._proxied_services()))
