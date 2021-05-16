@@ -19,6 +19,9 @@ class LogsManager(LoggerServiceServicer, RpcManager):
     def __init__(self):
         RpcManager.__init__(self, LOGGERS_FILE, self.__validate_config_file)
 
+        # Remember reset level for root logger
+        self._root_reset_level = logging.getLogger().level
+
     def __validate_config_file(self, config_file: Path, json_model):
         if not isinstance(json_model, dict) or any(not isinstance(v, str) and not isinstance(v, bool) for v in json_model.values()):
             raise RpcException(f"Invalid logger json file (expecting a simple str:[str or bool] object): {config_file}", ResultCode.ERROR_MODEL_INVALID)
@@ -71,7 +74,7 @@ class LogsManager(LoggerServiceServicer, RpcManager):
         if isinstance(request, Filter):
             # Provide reset config (enabled + default level)
             return map(
-                lambda n: (self.get_logger(n), LoggerConfig(name=n, enabled=True, level=LoggerLevel.LVL_WARNING if n == "" else LoggerLevel.LVL_UNKNOWN)),
+                lambda n: (self.get_logger(n), LoggerConfig(name=n, enabled=True, level=self._root_reset_level if n == "" else LoggerLevel.LVL_UNKNOWN)),
                 request.names,
             )
         else:
