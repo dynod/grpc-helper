@@ -37,7 +37,7 @@ class RetryMethod:
             self.logger.debug(f"<RPC> >> {self.s_name}.{self.m_name}... (retry because of 'unavailable' error; details: '{e.details()}')")
         else:
             # Timed out or any other reason: raise exception
-            self.logger.error(f"<RPC> >> {self.s_name}.{self.m_name} error: {str(e)}")
+            self.logger.debug(f"<RPC> >> {self.s_name}.{self.m_name} error: {str(e)}")
             raise RpcException(f"RPC error (on {trace}): {e}", rc=ResultCode.ERROR_RPC)
 
     def raise_result(self, result, trace):
