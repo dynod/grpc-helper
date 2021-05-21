@@ -8,7 +8,7 @@ INTERVAL_UNITS = ["S", "M", "H", "D", "MIDNIGHT"] + list(map(lambda x: f"W{x}", 
 
 # Interval unit validation
 def validate_interval_unit(name: str, value: str):
-    if value.capitalize() not in INTERVAL_UNITS:
+    if value.upper() not in INTERVAL_UNITS:
         raise RpcException(f"Invalid interval unit for {name}: {value}", rc=ResultCode.ERROR_PARAM_INVALID)
 
 
