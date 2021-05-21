@@ -36,6 +36,7 @@ from grpc_helper.config.cfg_manager import ConfigManager
 from grpc_helper.errors import RpcException
 from grpc_helper.folders import Folders
 from grpc_helper.logs.logs_manager import LogsManager
+from grpc_helper.logs.logs_utils import add_rotating_handler, clean_rotating_handler
 from grpc_helper.manager import RpcManager
 from grpc_helper.methods import RpcSimpleMethod, RpcStreamingMethod
 from grpc_helper.static_config import RpcStaticConfig
@@ -336,10 +337,10 @@ class RpcServer(RpcServerServiceServicer, RpcManager):
 
         # Removing all rotating loggers
         for descriptor in self.__real_descriptors:
-            self._clean_rotating_handler(descriptor.manager.logger)
+            clean_rotating_handler(descriptor.manager.logger)
 
         # Remove rotating handler for current + root loggers
-        self._clean_rotating_handler(logging.getLogger())
+        clean_rotating_handler(logging.getLogger())
         self.__shutdown_event.set()
 
     def info(self, request: Filter) -> MultiServiceInfo:
@@ -355,7 +356,7 @@ class RpcServer(RpcServerServiceServicer, RpcManager):
     def _init_folders_n_logger(self, folders: Folders, port: int):
         # Override to process root logger as well
         super()._init_folders_n_logger(folders, port)
-        self._add_rotating_handler(logging.getLogger())
+        add_rotating_handler(self._log_folder, logging.getLogger())
 
     @property
     def is_running(self) -> bool:

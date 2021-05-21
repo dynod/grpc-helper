@@ -1,9 +1,6 @@
 import json
 import logging
-import os
-import socket
 from abc import ABC, abstractmethod
-from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from threading import RLock
 from typing import Callable, List, Set, Tuple
@@ -13,7 +10,9 @@ from grpc_helper.api.server_pb2_grpc import RpcServerServiceStub
 from grpc_helper.client import RpcClient
 from grpc_helper.errors import RpcException
 from grpc_helper.folders import Folders
+from grpc_helper.logs.logs_utils import add_rotating_handler
 from grpc_helper.static_config import RpcStaticConfig
+from grpc_helper.utils import get_current_ip
 
 
 class RpcManager:
@@ -37,42 +36,13 @@ class RpcManager:
         log_folder.parent.mkdir(parents=True, exist_ok=True)
         return log_folder
 
-    def _add_rotating_handler(self, logger: logging.Logger):
-        # Configure persisting folder/file for logs
-        log_file = self._log_folder / logger.name / f"{logger.name}.log"
-        log_file.parent.mkdir(parents=True, exist_ok=True)
-
-        # Setup rotating handler with specific format
-        handler = TimedRotatingFileHandler(
-            log_file,
-            when=RpcStaticConfig.LOGS_ROLLOVER_INTERVAL_UNIT.str_val,
-            interval=RpcStaticConfig.LOGS_ROLLOVER_INTERVAL.int_val,
-            backupCount=RpcStaticConfig.LOGS_BACKUP.int_val,
-        )
-        handler.setFormatter(
-            logging.Formatter(
-                f"%(asctime)s.%(msecs)03d [%(process)d{'/%(name)s' if isinstance(logger,logging.RootLogger) else ''}] %(levelname)s %(message)s - %(filename)s:%(funcName)s:%(lineno)d",
-                datefmt="%Y-%m-%d %H:%M:%S",
-            )
-        )
-        logger.addHandler(handler)
-
-        # First log!
-        logger.info(f"---------- New {logger.name} logger instance for process {os.getpid()} ----------")
-
-    def _clean_rotating_handler(self, logger):
-        # Remove any rotating handler
-        logger.info("Closing file log (shutting down)")
-        for handler in filter(lambda h: isinstance(h, TimedRotatingFileHandler), logger.handlers):
-            logger.removeHandler(handler)
-
     def _init_folders_n_logger(self, folders: Folders, port: int):
         # Remember folders and port
         self.folders = folders if folders is not None else Folders()
         self.port = port
 
         # Prepare handler
-        self._add_rotating_handler(self.logger)
+        add_rotating_handler(self._log_folder, self.logger)
 
     def _preload(self, client: RpcClient, folders: Folders):
         # Remember client, and delegate loading to subclass
@@ -185,15 +155,7 @@ class RpcProxiedManager(RpcManager, ABC):
 
     @property
     def __current_ip(self):
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        try:
-            s.connect(("8.8.8.8", 1))
-            out = s.getsockname()[0]
-        except Exception:  # pragma: no cover
-            out = RpcStaticConfig.MAIN_HOST.str_val
-        finally:
-            s.close()
-        return out
+        return get_current_ip(RpcStaticConfig.MAIN_HOST.str_val)
 
     def _shutdown(self):
         # Forget from proxy

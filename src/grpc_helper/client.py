@@ -1,19 +1,21 @@
+import copy
 import os
 import pwd
 import socket
 import time
 from logging import Logger, getLogger
-from typing import TypeVar
+from typing import TypeVar, Union
 
 from grpc import RpcError, StatusCode, insecure_channel
 
 from grpc_helper.api import Result, ResultCode
 from grpc_helper.errors import RpcException
-from grpc_helper.utils import is_streaming, trace_rpc
+from grpc_helper.meta import RpcMetadata
+from grpc_helper.utils import get_current_ip, is_streaming, trace_rpc
 
 
 class RetryMethod:
-    def __init__(self, name: str, stub, channel: str, timeout: float, metadata: tuple, logger: Logger, exception: bool, custom_exception: TypeVar):
+    def __init__(self, name: str, stub, channel: str, timeout: float, metadata: RpcMetadata, logger: Logger, exception: bool, custom_exception: TypeVar):
         self.m_name = name
         self.s_name = f"{stub.__class__.__name__}({channel})"
         self.stub = stub
@@ -24,7 +26,7 @@ class RetryMethod:
         self.custom_exception = custom_exception if custom_exception is not None else RpcException
 
     def prelude(self, request):
-        trace = trace_rpc(True, request, method=f"{self.s_name}.{self.m_name}")
+        trace = trace_rpc(True, request, context=self.metadata, method=f"{self.s_name}.{self.m_name}")
         self.logger.debug(trace)
         return (trace, time.time())
 
@@ -53,8 +55,8 @@ class RetryStreamingMethod(RetryMethod):
         while True:
             try:
                 # Call real stub method, with metadata
-                for result in getattr(self.stub, self.m_name)(request, metadata=self.metadata):
-                    out_trace = trace_rpc(False, result, method=f"{self.s_name}.{self.m_name}")
+                for result in getattr(self.stub, self.m_name)(request, metadata=self.metadata.as_tuple()):
+                    out_trace = trace_rpc(False, result, context=self.metadata, method=f"{self.s_name}.{self.m_name}")
                     self.logger.debug(out_trace)
                     self.raise_result(result, out_trace)
                     yield result
@@ -72,8 +74,8 @@ class RetrySimpleMethod(RetryMethod):
         while True:
             try:
                 # Call real stub method, with metadata
-                result = getattr(self.stub, self.m_name)(request, metadata=self.metadata)
-                out_trace = trace_rpc(False, result, method=f"{self.s_name}.{self.m_name}")
+                result = getattr(self.stub, self.m_name)(request, metadata=self.metadata.as_tuple())
+                out_trace = trace_rpc(False, result, context=self.metadata, method=f"{self.s_name}.{self.m_name}")
                 self.logger.debug(out_trace)
 
                 # May raise an exception...
@@ -86,7 +88,7 @@ class RetrySimpleMethod(RetryMethod):
 # Utility class to handle stub retry
 # i.e. permissive stub that allows server to be temporarily unavailable
 class RetryStub:
-    def __init__(self, real_stub, channel: str, timeout: float, metadata: tuple, logger: Logger, exception: bool, custom_exception: TypeVar):
+    def __init__(self, real_stub, channel: str, timeout: float, metadata: RpcMetadata, logger: Logger, exception: bool, custom_exception: TypeVar):
         # Fake the stub methods
         for n in filter(lambda x: not x.startswith("__") and callable(getattr(real_stub, x)), dir(real_stub)):
             setattr(
@@ -113,7 +115,9 @@ class RpcClient:
         timeout:
             timeout for unreachable server (in seconds; default: 60)
         name:
-            client name, which will appear in server logs
+            can be either:
+                - a string: client name, which will appear in server logs; RPC metadata will be generated from this name + current host
+                - an RpcMetadata instance (when proxying calls from another client)
         logger:
             Logger instance to be used when logging calls
         exception:
@@ -128,13 +132,13 @@ class RpcClient:
         port: int,
         stubs_map: dict,
         timeout: float = 60,
-        name: str = "",
+        name: Union[str, RpcMetadata] = "",
         logger: Logger = None,
         exception: bool = True,
         custom_exception: TypeVar = None,
     ):
         # Prepare metadata for RPC calls
-        shared_metadata = [("client", name), ("user", self.get_user()), ("host", socket.gethostname()), ("ip", self.get_ip())]
+        shared_metadata = name if isinstance(name, RpcMetadata) else RpcMetadata(name, self.get_user(), socket.gethostname(), get_current_ip())
 
         # Prepare logger
         self.logger = logger if logger is not None else getLogger("RpcClient")
@@ -147,24 +151,13 @@ class RpcClient:
         # Handle stubs hooking
         for name, typ_n_ver in stubs_map.items():
             typ, ver = typ_n_ver
-            metadata = list(shared_metadata)
+            metadata = copy.copy(shared_metadata)
             if ver is not None:
-                metadata.append(("api_version", str(ver)))
+                metadata.api_version = str(ver)
             self.logger.debug(f" >> adding {name} stub to client (api version: {ver})")
-            setattr(self, name, RetryStub(typ(channel), self.target_host, timeout, tuple(metadata), self.logger, exception, custom_exception))
+            setattr(self, name, RetryStub(typ(channel), self.target_host, timeout, metadata, self.logger, exception, custom_exception))
 
         self.logger.debug(f"RPC client ready for {self.target_host}")
-
-    def get_ip(self):
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        try:
-            s.connect(("8.8.8.8", 1))
-            out = s.getsockname()[0]
-        except Exception:  # NOQA: B902 # pragma: no cover
-            out = ""
-        finally:
-            s.close()
-        return out
 
     def get_user(self):
         # Resolve user
@@ -172,7 +165,7 @@ class RpcClient:
         try:
             # Try from pwd
             user = pwd.getpwuid(uid).pw_name
-        except Exception:  # NOQA: B902 # pragma: no cover
+        except Exception:  # pragma: no cover
             # Not in pwd database, just keep UID
             user = f"{uid}"
         return user
