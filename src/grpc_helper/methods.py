@@ -1,3 +1,4 @@
+import copy
 import time
 import traceback
 from logging import getLogger
@@ -7,6 +8,7 @@ from grpc_helper.api import Result, ResultCode, ResultStatus, ServiceInfo
 from grpc_helper.client import RpcClient
 from grpc_helper.errors import RpcException
 from grpc_helper.manager import RpcManager
+from grpc_helper.meta import RpcMetadata
 from grpc_helper.static_config import RpcStaticConfig
 from grpc_helper.utils import trace_rpc
 
@@ -49,9 +51,10 @@ class RpcServerMethod:
 
     def delegate_call(self, request, context):
         # Verify API version
-        metadata = {k: v for k, v in context.invocation_metadata()}
-        if "api_version" in metadata:
-            client_version = int(metadata["api_version"])
+        metadata = RpcMetadata.from_context(context)
+        client_version = None
+        if len(metadata.api_version):
+            client_version = int(metadata.api_version)
             if client_version > self.info.current_api_version:
                 raise RpcException(
                     f"Server current API version ({self.info.current_api_version}) is too old for client API version ({client_version})",
@@ -77,12 +80,16 @@ class RpcServerMethod:
                     # Timeout expired... notify the caller
                     raise RpcException("Proxy didn't registered in time for method call", ResultCode.ERROR_PROXY_UNREGISTERED)
 
+            # Reuse metadata from context
+            client_meta = copy.copy(metadata)
+            client_meta.client = f"{client_meta.client}(proxied)"
+
             # Temporary client to proxied server (that won't raise exceptions: let's simply forward the output message to final client)
             client = RpcClient(
                 self.info.proxy_host if len(self.info.proxy_host) else RpcStaticConfig.MAIN_HOST.str_val,
                 self.info.proxy_port,
-                {"stub": (self.stub, self.info.current_api_version)},
-                name="proxy",
+                {"stub": (self.stub, client_version if client_version is not None else self.info.current_api_version)},
+                name=client_meta,
                 timeout=RpcStaticConfig.CLIENT_TIMEOUT.float_val,
                 logger=self.logger,
                 exception=False,
