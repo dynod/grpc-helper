@@ -5,7 +5,8 @@ from pathlib import Path
 from threading import RLock
 from typing import Callable, List, Set, Tuple
 
-from grpc_helper.api import Filter, ProxyRegisterRequest, ResultCode, ServerApiVersion
+from grpc_helper.api import EventApiVersion, Filter, ProxyRegisterRequest, ResultCode, ServerApiVersion
+from grpc_helper.api.events_pb2_grpc import EventServiceStub
 from grpc_helper.api.server_pb2_grpc import RpcServerServiceStub
 from grpc_helper.client import RpcClient
 from grpc_helper.errors import RpcException
@@ -139,7 +140,7 @@ class RpcProxiedManager(RpcManager, ABC):
 
     def _load(self):
         # Prepare proxy client
-        stubs_map = {"srv": (RpcServerServiceStub, ServerApiVersion.SERVER_API_CURRENT)}
+        stubs_map = {"srv": (RpcServerServiceStub, ServerApiVersion.SERVER_API_CURRENT), "events": (EventServiceStub, EventApiVersion.EVENT_API_CURRENT)}
         stubs_map.update(self._proxy_stubs())
         self.proxy_client = RpcClient(RpcStaticConfig.MAIN_HOST.str_val, RpcStaticConfig.MAIN_PORT.int_val, stubs_map)
 
