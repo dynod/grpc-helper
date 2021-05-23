@@ -21,6 +21,7 @@ from grpc_helper.api import (
     ServerApiVersion,
     ShutdownRequest,
 )
+from grpc_helper.api.events_pb2 import EventApiVersion
 from tests.api import SampleApiVersion, SampleRequest, SampleResponse
 from tests.api.sample_pb2_grpc import SampleServiceServicer, SampleServiceStub, add_SampleServiceServicer_to_server
 from tests.utils import TestUtils
@@ -83,7 +84,7 @@ class TestRpcServer(TestUtils):
         # Normal call
         s = client.sample.method1(Empty())
         assert s.r.code == ResultCode.OK
-        assert s.r.msg == "Found info count: 4"
+        assert s.r.msg == "Found info count: 5"
 
     def test_debug_dump(self, client):
         # Tweak servicer to send debug signal to serving process
@@ -144,7 +145,7 @@ class TestRpcServer(TestUtils):
     def test_get_info(self, client):
         # Try a "get info" call
         s = client.srv.info(Filter())
-        assert len(s.items) == 4
+        assert len(s.items) == 5
         info = s.items[0]
         assert info.name == "srv"
         assert info.version == f"grpc-helper:{grpc_helper.__version__}"
@@ -161,6 +162,11 @@ class TestRpcServer(TestUtils):
         assert info.current_api_version == LoggerApiVersion.LOGGER_API_CURRENT
         assert info.supported_api_version == LoggerApiVersion.LOGGER_API_SUPPORTED
         info = s.items[3]
+        assert info.name == "events"
+        assert info.version == f"grpc-helper:{grpc_helper.__version__}"
+        assert info.current_api_version == EventApiVersion.EVENT_API_CURRENT
+        assert info.supported_api_version == EventApiVersion.EVENT_API_SUPPORTED
+        info = s.items[4]
         assert info.name == "sample"
         assert info.version == f"grpc-helper:{grpc_helper.__version__}"
         assert info.current_api_version == SampleApiVersion.SAMPLE_API_CURRENT
@@ -382,7 +388,7 @@ class TestRpcServer(TestUtils):
 
         # Try a simple call
         s = proxy_server.client.sample.method1(Empty())
-        assert s.r.msg == "Found info count: 4"
+        assert s.r.msg == "Found info count: 5"
 
         # Shutdown / reload to verify persistence
         proxy_server.shutdown()
@@ -390,7 +396,7 @@ class TestRpcServer(TestUtils):
 
         # Try a simple call again
         s = proxy_server.client.sample.method1(Empty())
-        assert s.r.msg == "Found info count: 4"
+        assert s.r.msg == "Found info count: 5"
 
         # Forget
         proxy_server.client.srv.proxy_forget(Filter(names=["sample"]))

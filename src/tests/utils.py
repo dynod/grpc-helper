@@ -34,10 +34,7 @@ class TestUtils(TestHelper):
     def new_server_instance(self, with_workspace: bool = True):
         # Create new server instance
         self.server = RpcServer(
-            self.rpc_port,
-            self.sample_register,
-            user_items=self.user_items,
-            folders=self.folders if with_workspace else Folders(),
+            self.rpc_port, self.sample_register, user_items=self.user_items, folders=self.folders if with_workspace else Folders(), with_events=True
         )
 
     def shutdown_server_instance(self):
@@ -99,6 +96,7 @@ class TestUtils(TestHelper):
                 ),
             ],
             folders=Folders(workspace=self.proxy_workspace),
+            with_events=True,
         )
         return self.proxy_server
 

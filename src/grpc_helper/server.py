@@ -16,6 +16,7 @@ from grpc import Server, insecure_channel, server
 import grpc_helper
 from grpc_helper.api import (
     ConfigApiVersion,
+    EventApiVersion,
     Filter,
     LoggerApiVersion,
     MultiServiceInfo,
@@ -28,12 +29,14 @@ from grpc_helper.api import (
     ShutdownRequest,
 )
 from grpc_helper.api.config_pb2_grpc import ConfigServiceStub, add_ConfigServiceServicer_to_server
+from grpc_helper.api.events_pb2_grpc import EventServiceStub, add_EventServiceServicer_to_server
 from grpc_helper.api.logger_pb2_grpc import LoggerServiceStub, add_LoggerServiceServicer_to_server
 from grpc_helper.api.server_pb2_grpc import RpcServerServiceServicer, RpcServerServiceStub, add_RpcServerServiceServicer_to_server
 from grpc_helper.client import RpcClient
 from grpc_helper.config.cfg_item import Config
 from grpc_helper.config.cfg_manager import ConfigManager
 from grpc_helper.errors import RpcException
+from grpc_helper.events.events_manager import EventsManager
 from grpc_helper.folders import Folders
 from grpc_helper.logs.logs_manager import LogsManager
 from grpc_helper.logs.logs_utils import add_rotating_handler, clean_rotating_handler
@@ -138,6 +141,8 @@ class RpcServer(RpcServerServiceServicer, RpcManager):
             list of Config/ConfigHolder instances for static config items (default: None).
         user_items:
             list of Config/ConfigHolder instances for user config items (default: None).
+        with_events:
+            states if this server has to serve the events service
     """
 
     def __init__(
@@ -148,6 +153,7 @@ class RpcServer(RpcServerServiceServicer, RpcManager):
         cli_config: Dict[str, str] = None,
         static_items: List[Config] = None,
         user_items: List[Config] = None,
+        with_events: bool = False,
     ):
         RpcManager.__init__(self, PROXY_FILE)
         self.__port = port
@@ -165,14 +171,20 @@ class RpcServer(RpcServerServiceServicer, RpcManager):
         # - to handle server basic operations
         # - to handle remote user configuration update
         # - to handle remote loggers configuration update
-        self.descriptors = [
+        # - to handle events (if required)
+        base_descriptors = [
             RpcServiceDescriptor(grpc_helper, "srv", ServerApiVersion, self, add_RpcServerServiceServicer_to_server, RpcServerServiceStub),
             RpcServiceDescriptor(grpc_helper, "config", ConfigApiVersion, config_m, add_ConfigServiceServicer_to_server, ConfigServiceStub),
             RpcServiceDescriptor(grpc_helper, "log", LoggerApiVersion, LogsManager(), add_LoggerServiceServicer_to_server, LoggerServiceStub),
         ]
+        if with_events:
+            base_descriptors.append(
+                RpcServiceDescriptor(grpc_helper, "events", EventApiVersion, EventsManager(), add_EventServiceServicer_to_server, EventServiceStub)
+            )
+        self.descriptors = {d.name: d for d in base_descriptors}
 
         # Get servicers
-        self.descriptors.extend(descriptors)
+        self.descriptors.update({d.name: d for d in descriptors})
 
         # Load persisted proxies model
         proxies_model = self._load_config(folders.workspace)
@@ -182,7 +194,7 @@ class RpcServer(RpcServerServiceServicer, RpcManager):
 
         # Register everything
         self.__info = {}
-        for descriptor in self.descriptors:
+        for descriptor in self.descriptors.values():
             # Prepare folders and logger (only for non-proxy)
             if not descriptor.is_proxy:
                 descriptor.manager._init_folders_n_logger(folders, port)
@@ -256,7 +268,7 @@ class RpcServer(RpcServerServiceServicer, RpcManager):
     @property
     def __real_descriptors(self):
         # Yield descriptors with a real manager registered (non-proxy ones)
-        return filter(lambda d: not d.is_proxy, self.descriptors)
+        return filter(lambda d: not d.is_proxy, self.descriptors.values())
 
     def __dump_debug(self, signum, frame):
         """
