@@ -111,6 +111,10 @@ class RpcManager:
 
 
 class RpcProxiedManager(RpcManager, ABC):
+    def __init__(self, config_name: str = None, config_validator: Callable = None):
+        super().__init__(config_name=config_name, config_validator=config_validator)
+        self.proxy_client = None
+
     def _proxy_stubs(self) -> dict:
         """
         Dict of stubs to be added to proxy_client
@@ -142,10 +146,12 @@ class RpcProxiedManager(RpcManager, ABC):
         # Prepare proxy client
         stubs_map = {"srv": (RpcServerServiceStub, ServerApiVersion.SERVER_API_CURRENT), "events": (EventServiceStub, EventApiVersion.EVENT_API_CURRENT)}
         stubs_map.update(self._proxy_stubs())
-        self.proxy_client = RpcClient(RpcStaticConfig.MAIN_HOST.str_val, RpcStaticConfig.MAIN_PORT.int_val, stubs_map)
+        client_candidate = RpcClient(
+            RpcStaticConfig.MAIN_HOST.str_val, RpcStaticConfig.MAIN_PORT.int_val, stubs_map, timeout=RpcStaticConfig.CLIENT_TIMEOUT.float_val
+        )
 
         # Register in proxy
-        self.proxy_client.srv.proxy_register(
+        client_candidate.srv.proxy_register(
             ProxyRegisterRequest(
                 names=self._proxied_services(),
                 version=self._proxied_version(),
@@ -153,11 +159,13 @@ class RpcProxiedManager(RpcManager, ABC):
                 port=self.port,
             )
         )
+        self.proxy_client = client_candidate
 
     @property
     def __current_ip(self):
         return get_current_ip(RpcStaticConfig.MAIN_HOST.str_val)
 
     def _shutdown(self):
-        # Forget from proxy
-        self.proxy_client.srv.proxy_forget(Filter(names=self._proxied_services()))
+        # Forget from proxy (if it was registered)
+        if self.proxy_client is not None:
+            self.proxy_client.srv.proxy_forget(Filter(names=self._proxied_services()))
