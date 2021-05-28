@@ -506,3 +506,16 @@ class TestRpcServer(TestUtils):
         host, port = proxy_server._proxied_servers.pop()
         assert self.rpc_another_port == port
         assert len(host.split(".")) == 4
+
+    def test_proxied_manager_load_failed(self):
+        # Short timeout for unregistered proxy
+        os.environ["RPC_CLIENT_TIMEOUT"] = "0.1"
+
+        # Try to start proxied server without proxy
+        try:
+            self.start_another_server(False)
+            raise AssertionError("Shouldn't get here")
+        except RpcException as e:
+            assert e.rc == ResultCode.ERROR_RPC
+
+        del os.environ["RPC_CLIENT_TIMEOUT"]
