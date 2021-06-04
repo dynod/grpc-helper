@@ -18,6 +18,8 @@ The **`RpcServer`** class handles the lifecycle of a GRPC server. To initialize,
 * an optional dict of string:string, providing config items defaults initialized from CLI (usually provided by the **`RpcCliParser`** CLI parsing)
 * an optional list of **`Config`** or **`ConfigHolder`** instances, which will be this server's *static* config items
 * an optional list of **`Config`** or **`ConfigHolder`** instances, which will be this server's *user* config items
+* a boolean flag stating if the events service has to be started in this server instance (default: **`False`**)
+* a boolean flag stating if the debug signal has to be listened (see below; default: **`True`**)
 
 The **`Folders`** class handle the different folders used by the server:
 * a *system* folder, used to store config shared by multiple users and applications. This folder doesn't need to be writable by the server running user.
@@ -83,7 +85,7 @@ range for this service:
 
 #### Debug
 
-The RPC server will hook to the USR2 signal for debug purpose. When receiving this signal, following debug information will be dumped in a file
+The RPC server will hook to the USR2 signal for debug purpose (if required). When receiving this signal, following debug information will be dumped in a file
 name **RpcServerDump-YYYYMMDDhhmmss.txt** (with dump timestamp) in the logging folder (see below):
 * all the live threads call stacks
 * all the pending RPC requests

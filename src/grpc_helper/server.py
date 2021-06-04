@@ -143,6 +143,8 @@ class RpcServer(RpcServerServiceServicer, RpcManager):
             list of Config/ConfigHolder instances for user config items (default: None).
         with_events:
             states if this server has to serve the events service
+        with_debug_signal:
+            states if this server has to catch user signal to dump debug information
     """
 
     def __init__(
@@ -154,6 +156,7 @@ class RpcServer(RpcServerServiceServicer, RpcManager):
         static_items: List[Config] = None,
         user_items: List[Config] = None,
         with_events: bool = False,
+        with_debug_signal: bool = True,
     ):
         RpcManager.__init__(self, PROXY_FILE)
         self.__port = port
@@ -239,8 +242,9 @@ class RpcServer(RpcServerServiceServicer, RpcManager):
         self.__server.start()
         self.logger.debug(f"RPC server started on port {self.__port}")
 
-        # Hook debug signal
-        signal(SIGUSR2, self.__dump_debug)
+        # Hook debug signal if required
+        if with_debug_signal:
+            signal(SIGUSR2, self.__dump_debug)
 
         # Load all managers (including client pointing to all served services)
         to_raise = None
