@@ -97,6 +97,7 @@ class TestUtils(TestHelper):
             ],
             folders=Folders(workspace=self.proxy_workspace),
             with_events=True,
+            with_debug_signal=False,
         )
         return self.proxy_server
 
