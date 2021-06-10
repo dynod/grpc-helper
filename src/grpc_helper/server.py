@@ -1,11 +1,12 @@
 import faulthandler
 import inspect
 import logging
+import os
+import signal
 import time
 import traceback
 from concurrent import futures
 from dataclasses import dataclass
-from signal import SIGUSR2, signal
 from threading import Event, Thread
 from types import ModuleType
 from typing import Callable, Dict, List, NoReturn, TypeVar, Union
@@ -243,8 +244,8 @@ class RpcServer(RpcServerServiceServicer, RpcManager):
         self.logger.debug(f"RPC server started on port {self.__port}")
 
         # Hook debug signal if required
-        if with_debug_signal:
-            signal(SIGUSR2, self.__dump_debug)
+        if with_debug_signal and os.name == "posix":
+            signal.signal(signal.SIGUSR2, self.__dump_debug)
 
         # Load all managers (including client pointing to all served services)
         to_raise = None
