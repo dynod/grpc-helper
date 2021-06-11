@@ -12,10 +12,10 @@ jobs:
                   url: https://github.com/dynod/workspace.git
                   group: tools
                   env: OUTPUT_ROOT=/github/workspace/out
-            - name: Run build
+            - name: Run tests
               uses: dynod/call-make@1.2.0
               with:
-                  target: build
+                  target: tests
                   env: OUTPUT_ROOT=/github/workspace/out
             - name: Archive Python distribution
               uses: actions/upload-artifact@v1
@@ -27,13 +27,13 @@ jobs:
               with:
                   name: flake8 report
                   path: out/flake-report
-#            - name: Archive coverage report
-#              uses: actions/upload-artifact@v1
-#              with:
-#                  name: coverage report
-#                  path: out/coverage-report
-#            - name: Archive tests report
-#              uses: actions/upload-artifact@v1
-#              with:
-#                  name: tests logs and report
-#                  path: out/tests
+            - name: Archive coverage report
+              uses: actions/upload-artifact@v1
+              with:
+                  name: coverage report
+                  path: out/coverage-report
+            - name: Archive tests report
+              uses: actions/upload-artifact@v1
+              with:
+                  name: tests logs and report
+                  path: out/tests
