@@ -137,7 +137,7 @@ class RpcClient:
         custom_exception: TypeVar = None,
     ):
         # Prepare metadata for RPC calls
-        shared_metadata = name if isinstance(name, RpcMetadata) else RpcMetadata(name, os.getlogin(), socket.gethostname(), get_current_ip())
+        shared_metadata = name if isinstance(name, RpcMetadata) else RpcMetadata(name, self.get_user(), socket.gethostname(), get_current_ip())
 
         # Prepare logger
         self.logger = logger if logger is not None else getLogger("RpcClient")
@@ -157,3 +157,20 @@ class RpcClient:
             setattr(self, name, RetryStub(typ(channel), self.target_host, timeout, metadata, self.logger, exception, custom_exception))
 
         self.logger.debug(f"RPC client ready for {self.target_host}")
+
+    def get_user(self):
+        if os.name == "posix":
+            # Resolve user
+            uid = os.getuid()
+            try:
+                # Try from pwd
+                import pwd
+
+                user = pwd.getpwuid(uid).pw_name
+            except Exception:  # pragma: no cover
+                # Not in pwd database, just keep UID
+                user = f"{uid}"
+            return user
+
+        # Otherwise, just get login
+        return os.getlogin()  # pragma: no cover
