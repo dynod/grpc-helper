@@ -70,7 +70,7 @@ class SampleServicer(SampleServiceServicer, RpcManager):
         for foo in ["abc", "def", "ghi", request.foo]:
             # Raise exception on "error" string
             if foo == "error":
-                raise RpcException("Sample error occurred", rc=ResultCode.ERROR_CUSTOM)
+                raise RpcException("Sample error occurred", rc=ResultCode.ERROR_PARAM_INVALID)
             yield ResultStatus(r=Result(msg=foo))
 
 
@@ -454,7 +454,7 @@ class TestRpcServer(TestUtils):
                 assert s.r.msg in ["abc", "def", "ghi"]
             raise AssertionError("Shouldn't get here")
         except RpcException as e:
-            assert e.rc == ResultCode.ERROR_CUSTOM
+            assert e.rc == ResultCode.ERROR_PARAM_INVALID
         assert results
 
     def test_not_implemented_stream(self, client):
