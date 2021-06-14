@@ -40,7 +40,12 @@ class RetryMethod:
             raise RpcException(f"RPC error (on {trace}): {e}", rc=ResultCode.ERROR_RPC)
 
     def raise_result(self, result, trace):
-        if (hasattr(result, "r") and isinstance(result.r, Result)) and result.r.code != ResultCode.OK and self.exception:
+        if (
+            (hasattr(result, "r") and isinstance(result.r, Result))
+            and result.r.code > ResultCode.OK
+            and result.r.code < ResultCode.ERROR_CUSTOM
+            and self.exception
+        ):
             # Error occurred
             raise self.custom_exception(f"RPC returned error: {trace}", rc=result.r.code)
 
