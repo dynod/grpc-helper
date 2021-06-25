@@ -39,7 +39,7 @@ class RetryMethod:
             self.logger.debug(f"<RPC> >> {self.s_name}.{self.m_name} error: {str(e)}")
             raise RpcException(f"RPC error (on {trace}): {e}", rc=ResultCode.ERROR_RPC)
 
-    def raise_result(self, result, trace):
+    def raise_result(self, result):
         if (
             (hasattr(result, "r") and isinstance(result.r, Result))
             and result.r.code > ResultCode.OK
@@ -47,7 +47,7 @@ class RetryMethod:
             and self.exception
         ):
             # Error occurred
-            raise self.custom_exception(f"RPC returned error: {trace}", rc=result.r.code)
+            raise self.custom_exception(f"RPC returned error: {result.r.msg}", rc=result.r.code)
 
 
 class RetryStreamingMethod(RetryMethod):
@@ -60,9 +60,10 @@ class RetryStreamingMethod(RetryMethod):
             try:
                 # Call real stub method, with metadata
                 for result in getattr(self.stub, self.m_name)(request, metadata=self.metadata.as_tuple()):
-                    out_trace = trace_rpc(False, result, context=self.metadata, method=f"{self.s_name}.{self.m_name}")
-                    self.logger.debug(out_trace)
-                    self.raise_result(result, out_trace)
+                    self.logger.debug(trace_rpc(False, result, context=self.metadata, method=f"{self.s_name}.{self.m_name}"))
+
+                    # May raise an exception...
+                    self.raise_result(result)
                     yield result
                 break
             except RpcError as e:
@@ -79,11 +80,10 @@ class RetrySimpleMethod(RetryMethod):
             try:
                 # Call real stub method, with metadata
                 result = getattr(self.stub, self.m_name)(request, metadata=self.metadata.as_tuple())
-                out_trace = trace_rpc(False, result, context=self.metadata, method=f"{self.s_name}.{self.m_name}")
-                self.logger.debug(out_trace)
+                self.logger.debug(trace_rpc(False, result, context=self.metadata, method=f"{self.s_name}.{self.m_name}"))
 
                 # May raise an exception...
-                self.raise_result(result, out_trace)
+                self.raise_result(result)
                 return result
             except RpcError as e:
                 self.handle_exception(trace, first_try, e)
