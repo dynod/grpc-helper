@@ -15,9 +15,11 @@ from google.protobuf.internal.enum_type_wrapper import EnumTypeWrapper
 from grpc import Server, insecure_channel, server
 
 import grpc_helper
+from grpc_helper.api import ConfigApiVersion
+from grpc_helper.api import Event as RpcEvent
 from grpc_helper.api import (
-    ConfigApiVersion,
     EventApiVersion,
+    EventProperty,
     Filter,
     LoggerApiVersion,
     MultiServiceInfo,
@@ -402,6 +404,11 @@ class RpcServer(RpcServerServiceServicer, RpcManager):
                 model[name] = {ProxyModel.HOST: srv_info.proxy_host, ProxyModel.PORT: srv_info.proxy_port, ProxyModel.VERSION: srv_info.version}
         self._save_config(model)
 
+    @property
+    def __can_send_events(self) -> bool:
+        # Events manager (and client) is instantiated
+        return hasattr(self.client, "events")
+
     def proxy_register(self, request: ProxyRegisterRequest) -> ResultStatus:
         # Verify input params
         services = self.__check_proxy_names(request)
@@ -419,6 +426,20 @@ class RpcServer(RpcServerServiceServicer, RpcManager):
             # Persist proxy info
             self.__persist_proxies()
 
+        # Send proxy registration event
+        if self.__can_send_events:  # pragma: no branch
+            self.client.events.send(
+                RpcEvent(
+                    name="RPC_PROXY_REGISTER",
+                    properties=[
+                        EventProperty(name="names", value=",".join(request.names)),
+                        EventProperty(name="version", value=request.version),
+                        EventProperty(name="port", value=str(request.port)),
+                        EventProperty(name="host", value=request.host),
+                    ],
+                )
+            )
+
         return ResultStatus()
 
     def proxy_forget(self, request: Filter) -> ResultStatus:
@@ -434,6 +455,10 @@ class RpcServer(RpcServerServiceServicer, RpcManager):
 
             # Persist proxy info
             self.__persist_proxies()
+
+        # Send proxy forget event
+        if self.__can_send_events:  # pragma: no branch
+            self.client.events.send(RpcEvent(name="RPC_PROXY_FORGET", properties=[EventProperty(name="names", value=",".join(request.names))]))
 
         return ResultStatus()
 

@@ -1,7 +1,7 @@
 from grpc_helper.api import ResultCode
 
 
-class RpcException(Exception):
+class RpcException(Exception):  # NOQA: N818
     """
     Common error class, holding an error code (typically to be returned in RPC response messages)
     """

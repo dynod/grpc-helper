@@ -110,6 +110,12 @@ server, with following details:
 * extra stubs available in the **`self.proxy_client`** attribute can be provided by **`_proxy_stubs`** method
 * if current host IP needs excpilicitely to be used for registration, **`_proxy_use_current_host`** method needs to return **`True`**
 
+When handling proxy servers, if the proxying server is started with events service enabled, it will send:
+* an **`RPC_PROXY_REGISTER`** event on each **`proxy_register`** method successful call
+* an **`RPC_PROXY_FORGET`** event on each **`proxy_forget`** method successful call
+
+Properties of the events will be inherited from the method input message.
+
 #### Rolling logs
 
 Each manager of the RPC server through its **`logger`** attribute, will have his logs persisted in a **\<name\>/\<name\>.log** rolling file (relative to the 
