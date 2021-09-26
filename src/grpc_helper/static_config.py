@@ -62,3 +62,9 @@ class RpcStaticConfig(ConfigHolder):
         default_value="60",
         validator=ConfigValidator.CONFIG_VALID_POS_FLOAT,
     )
+    EVENT_RETAIN_TIMEOUT = Config(
+        name="rpc-event-retain-timeout",
+        description="Retain timeout for event queues on interruption (seconds)",
+        default_value="300",
+        validator=ConfigValidator.CONFIG_VALID_POS_INT,
+    )
