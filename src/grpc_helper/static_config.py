@@ -68,3 +68,9 @@ class RpcStaticConfig(ConfigHolder):
         default_value="300",
         validator=ConfigValidator.CONFIG_VALID_POS_INT,
     )
+    EVENT_KEEPALIVE_TIMEOUT = Config(
+        name="rpc-event-keepalive-timeout",
+        description="Timeout for sending keep alive empty events (seconds)",
+        default_value="60",
+        validator=ConfigValidator.CONFIG_VALID_POS_INT,
+    )

@@ -1,5 +1,8 @@
 import time
+import traceback
 from queue import Queue
+from threading import Event as ThreadEvent
+from threading import Thread
 
 from grpc_helper.api import Empty, Event, EventFilter, EventInterrupt, EventQueueStatus, EventStatus, Result, ResultCode, ResultStatus
 from grpc_helper.api.events_pb2_grpc import EventServiceServicer
@@ -15,16 +18,47 @@ class EventsManager(EventServiceServicer, RpcManager):
 
     def __init__(self):
         # Super call
-        super().__init__()
+        super().__init__("queues.json")
 
         # Some setup
         self.__queues = {}
         self.__interrupt_times = {}
 
-    def _shutdown(self):
-        # On shutdown, interrupt all pending queues
+        # Init keep alive thread
+        self.__keep_alive_stop = ThreadEvent()
+        self.__keep_alive_t = None
+
+    def _load(self):
+        super()._load()
+
+        # Prepare persisted queues
+        persisted_q = list(map(int, self._load_config(self.folders.workspace).keys()))
+        self.logger.debug(f"Re-creating persisted event queues: {persisted_q}")
+        for q_index in persisted_q:
+            self.__queues[q_index] = Queue()
+
+            # Also assume all queues are interrupted (i.e. will disappear if listen is not resumed within the retain timeout)
+            self.__interrupt_times[q_index] = time.time()
+
+        # Start keep alive thread
+        self.__keep_alive_t = Thread(target=self.__keep_alive, daemon=True)
+        self.__keep_alive_t.start()
+
+    def _persist_queues(self):
         with self.lock:
+            # Persist queues
+            self._save_config({i: [] for i in self.__queues.keys()})
+
+    def _shutdown(self):
+        with self.lock:
+            # Stop keep alive thread
+            if self.__keep_alive_t is not None:  # pragma: no branch
+                self.__keep_alive_stop.set()
+                self.__keep_alive_t.join()
+
+            # Browse pending queues
             for q in self.__queues.values():
+                # Push an interrupt status
                 q.put(EventStatus(r=Result(msg="Service is shutdown", code=ResultCode.ERROR_STREAM_SHUTDOWN)), False)
 
     def __get_queue(self, index: int) -> Queue:
@@ -75,6 +109,7 @@ class EventsManager(EventServiceServicer, RpcManager):
                 # Create new queue
                 q = Queue()
                 self.__queues[index] = q
+                self._persist_queues()
 
         # Yield at least a first status with client_id
         yield EventStatus(client_id=index)
@@ -88,8 +123,8 @@ class EventsManager(EventServiceServicer, RpcManager):
             if event is None or isinstance(event, EventStatus):
                 break
 
-            # Is this a meaningful event?
-            if len(request.names) == 0 or event.name in request.names:
+            # Is this a meaningful or a keep alive event?
+            if len(request.names) == 0 or event.name in request.names or event.name == "":
                 # Yield received events (if any)
                 yield EventStatus(client_id=index, event=event)
 
@@ -111,6 +146,9 @@ class EventsManager(EventServiceServicer, RpcManager):
         if " " in request.name:
             raise RpcException(f"Invalid event name: {request.name}", ResultCode.ERROR_PARAM_INVALID)
 
+        return self.__internal_send(request)
+
+    def __internal_send(self, request: Event) -> ResultStatus:
         with self.lock:
             # Browse all queues
             to_delete = []
@@ -130,10 +168,12 @@ class EventsManager(EventServiceServicer, RpcManager):
                     # Still active queue: push event
                     self.__queues[index].put_nowait(request)
 
-            # Forget timed out events
-            for index in to_delete:
-                del self.__queues[index]
-                del self.__interrupt_times[index]
+            # Forget timed out events (if any)
+            if len(to_delete):
+                for index in to_delete:
+                    del self.__queues[index]
+                    del self.__interrupt_times[index]
+                self._persist_queues()
 
         return ResultStatus()
 
@@ -141,3 +181,16 @@ class EventsManager(EventServiceServicer, RpcManager):
         # Just dump active queues
         with self.lock:
             return EventQueueStatus(client_ids=list(self.__queues.keys()))
+
+    def __keep_alive(self):
+        while not self.__keep_alive_stop.is_set():
+            try:
+                # Send keep alive event
+                self.__internal_send(Event())
+
+                # Sleep before looping
+                init_time = time.time()
+                while (not self.__keep_alive_stop.is_set()) and (time.time() - init_time) < RpcStaticConfig.EVENT_KEEPALIVE_TIMEOUT.int_val:
+                    time.sleep(1)
+            except Exception as e:  # pragma: no cover
+                self.logger.error(f"Exception while sending keep alive event: {e}\n" + "".join(traceback.format_tb(e.__traceback__)))
