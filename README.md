@@ -127,16 +127,18 @@ Both logging folder and rollover cadency can be configured -- see **Configuratio
 The RPC server behavior can be configured through the following static configuration items:
 Name | Description | Type | Default
 ---- | ----------- | ---- | -------
-**rpc-max-workers**        | Maximum parallel RPC worker threads                                   | Positive integer | **`30`**
-**rpc-shutdown-grace**     | Grace period for pending calls to be terminated on shutdown (seconds) | Positive float   | **`30`**
-**rpc-shutdown-timeout**   | Final timeout before real shutdown (i.e. end of process; seconds)     | Positive float   | **`60`**
-**rpc-logs-folder**        | Folder (absolute or workspace-relative) where to store rolling logs   | String           | **`"logs"`**
-**rpc-logs-backup**        | Backup log files to be persisted for each manager on rollover         | Integer          | **`10`**
-**rpc-logs-interval-unit** | Logs rollover interval unit (see [TimedRotatingFileHandler documentation](https://docs.python.org/3/library/logging.handlers.html#logging.handlers.TimedRotatingFileHandler)) | Custom (see [doc](https://docs.python.org/3/library/logging.handlers.html#logging.handlers.TimedRotatingFileHandler)) | **`H`**
-**rpc-logs-interval**      | Logs rollover interval (see [TimedRotatingFileHandler documentation](https://docs.python.org/3/library/logging.handlers.html#logging.handlers.TimedRotatingFileHandler)) | Positive integer | **`1`**
-**rpc-main-host**          | Main RPC server host (to be used by proxied services)                 | String           | **`"localhost"`**
-**rpc-main-port**          | Main RPC server port (to be used by proxied services)                 | Positive integer | **`54321`**
-**rpc-client-timeout**     | Timeout for RPC client when server is unreachable or proxy not registered yet (seconds) | Positive float   | **`60`**
+**rpc-max-workers**             | Maximum parallel RPC worker threads                                   | Positive integer | **`30`**
+**rpc-shutdown-grace**          | Grace period for pending calls to be terminated on shutdown (seconds) | Positive float   | **`30`**
+**rpc-shutdown-timeout**        | Final timeout before real shutdown (i.e. end of process; seconds)     | Positive float   | **`60`**
+**rpc-logs-folder**             | Folder (absolute or workspace-relative) where to store rolling logs   | String           | **`"logs"`**
+**rpc-logs-backup**             | Backup log files to be persisted for each manager on rollover         | Integer          | **`10`**
+**rpc-logs-interval-unit**      | Logs rollover interval unit (see [TimedRotatingFileHandler documentation](https://docs.python.org/3/library/logging.handlers.html#logging.handlers.TimedRotatingFileHandler))      | Custom (see [doc](https://docs.python.org/3/library/logging.handlers.html#logging.handlers.TimedRotatingFileHandler)) | **`H`**
+**rpc-logs-interval**           | Logs rollover interval (see [TimedRotatingFileHandler documentation](https://docs.python.org/3/library/logging.handlers.html#logging.handlers.TimedRotatingFileHandler)) | Positive integer | **`1`**
+**rpc-main-host**               | Main RPC server host (to be used by proxied services)                 | String           | **`"localhost"`**
+**rpc-main-port**               | Main RPC server port (to be used by proxied services)                 | Positive integer | **`54321`**
+**rpc-client-timeout**          | Timeout for RPC client when server is unreachable or proxy not registered yet (seconds) | Positive float   | **`60`**
+**rpc-event-retain-timeout**    | Retain timeout for event queues on interruption (seconds)             | Positive integer | **`300`**
+**rpc-event-keepalive-timeout** | Timeout for sending keep alive empty events (seconds)                 | Positive integer | **`60`**
 
 #### Usage example
 
