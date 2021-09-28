@@ -7,6 +7,7 @@ from threading import Thread
 from grpc_helper.api import Empty, Event, EventFilter, EventInterrupt, EventQueueStatus, EventStatus, Result, ResultCode, ResultStatus
 from grpc_helper.api.events_pb2_grpc import EventServiceServicer
 from grpc_helper.errors import RpcException
+from grpc_helper.folders import Folders
 from grpc_helper.manager import RpcManager
 from grpc_helper.static_config import RpcStaticConfig
 
@@ -28,8 +29,9 @@ class EventsManager(EventServiceServicer, RpcManager):
         self.__keep_alive_stop = ThreadEvent()
         self.__keep_alive_t = None
 
-    def _load(self):
-        super()._load()
+    def _init_folders_n_logger(self, folders: Folders, port: int):
+        # Super call
+        super()._init_folders_n_logger(folders, port)
 
         # Prepare persisted queues
         persisted_q = list(map(int, self._load_config(self.folders.workspace).keys()))
@@ -39,6 +41,9 @@ class EventsManager(EventServiceServicer, RpcManager):
 
             # Also assume all queues are interrupted (i.e. will disappear if listen is not resumed within the retain timeout)
             self.__interrupt_times[q_index] = time.time()
+
+    def _load(self):
+        super()._load()
 
         # Start keep alive thread
         self.__keep_alive_t = Thread(target=self.__keep_alive, daemon=True)
