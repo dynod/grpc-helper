@@ -215,7 +215,7 @@ class TestRpcServer(TestUtils):
             assert e.rc == ResultCode.ERROR_RPC
 
         # Verify we retried at least one time
-        self.check_logs("(retry because of 'unavailable' error; details: 'failed to connect to all addresses')")
+        self.check_logs("(will retry in 0.5s because of 'unavailable' error; details: 'failed to connect to all addresses')")
 
     def test_not_implemented(self, client):
         # Not implemented call

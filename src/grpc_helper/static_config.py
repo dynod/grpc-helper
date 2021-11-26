@@ -5,6 +5,9 @@ from grpc_helper.errors import RpcException
 # Allowed interval units
 INTERVAL_UNITS = ["S", "M", "H", "D", "MIDNIGHT"] + list(map(lambda x: f"W{x}", range(7)))
 
+# Initial delay for RPC retry (seconds; doubled on each retry failure)
+RPC_RETRY_DELAY = 0.5
+
 
 # Interval unit validation
 def validate_interval_unit(name: str, value: str):

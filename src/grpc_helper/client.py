@@ -10,6 +10,7 @@ from grpc import RpcError, StatusCode, insecure_channel
 from grpc_helper.api import Result, ResultCode
 from grpc_helper.errors import RpcException
 from grpc_helper.meta import RpcMetadata
+from grpc_helper.static_config import RPC_RETRY_DELAY
 from grpc_helper.utils import get_current_ip, is_streaming, trace_rpc
 
 
@@ -29,11 +30,12 @@ class RetryMethod:
         self.logger.debug(trace)
         return (trace, time.time())
 
-    def handle_exception(self, trace: str, first_try, e: RpcError):
+    def handle_exception(self, trace: str, first_try: float, e: RpcError, retry_delay: float):
         if e.code() == StatusCode.UNAVAILABLE and self.timeout is not None and (time.time() - first_try) < self.timeout:
             # Server is not available, and timeout didn't expired yet: sleep and retry
-            time.sleep(0.5)
-            self.logger.debug(f"<RPC> >> {self.s_name}.{self.m_name}... (retry because of 'unavailable' error; details: '{e.details()}')")
+            self.logger.debug(f"<RPC> << {self.s_name}.{self.m_name} (will retry in {retry_delay}s because of 'unavailable' error; details: '{e.details()}')")
+            time.sleep(retry_delay)
+            self.logger.debug(f"<RPC> >> {self.s_name}.{self.m_name}... (retry)")
         else:
             # Timed out or any other reason: raise exception
             self.logger.debug(f"<RPC> >> {self.s_name}.{self.m_name} error: {str(e)}")
@@ -54,12 +56,14 @@ class RetryStreamingMethod(RetryMethod):
     def __call__(self, request):
         # Call prelude
         trace, first_try = self.prelude(request)
+        retry_delay = RPC_RETRY_DELAY
 
         # Loop to handle retries
         while True:
             try:
                 # Call real stub method, with metadata
                 for result in getattr(self.stub, self.m_name)(request, metadata=self.metadata.as_tuple()):
+                    retry_delay = RPC_RETRY_DELAY
                     self.logger.debug(trace_rpc(False, result, context=self.metadata, method=f"{self.s_name}.{self.m_name}"))
 
                     # May raise an exception...
@@ -67,13 +71,15 @@ class RetryStreamingMethod(RetryMethod):
                     yield result
                 break
             except RpcError as e:
-                self.handle_exception(trace, first_try, e)
+                self.handle_exception(trace, first_try, e, retry_delay)
+                retry_delay *= 2
 
 
 class RetrySimpleMethod(RetryMethod):
     def __call__(self, request):
         # Call prelude
         trace, first_try = self.prelude(request)
+        retry_delay = RPC_RETRY_DELAY
 
         # Loop to handle retries
         while True:
@@ -86,7 +92,8 @@ class RetrySimpleMethod(RetryMethod):
                 self.raise_result(result)
                 return result
             except RpcError as e:
-                self.handle_exception(trace, first_try, e)
+                self.handle_exception(trace, first_try, e, retry_delay)
+                retry_delay *= 2
 
 
 # Utility class to handle stub retry

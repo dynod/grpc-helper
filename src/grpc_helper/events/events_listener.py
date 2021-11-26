@@ -1,3 +1,4 @@
+import time
 import traceback
 from abc import ABC, abstractmethod
 from logging import Logger, getLogger
@@ -8,6 +9,7 @@ from typing import List
 from grpc_helper.api import Event, EventFilter, EventInterrupt, ResultCode
 from grpc_helper.client import RpcClient
 from grpc_helper.errors import RpcException
+from grpc_helper.static_config import RPC_RETRY_DELAY
 
 
 class EventsListener(ABC):
@@ -40,9 +42,13 @@ class EventsListener(ABC):
 
     def __listen_to_events(self):
         # Listening loop
+        retry_delay = RPC_RETRY_DELAY
         while True:
             try:
                 for s in self.client.events.listen(EventFilter(client_id=self.client_id, names=self.names)):
+                    # Success, restore retry delay
+                    retry_delay = RPC_RETRY_DELAY
+
                     # Remember ID
                     if not self.ready.is_set():
                         self.client_id = s.client_id
@@ -64,6 +70,9 @@ class EventsListener(ABC):
                     else f"{e}\n" + "".join(traceback.format_tb(e.__traceback__))
                 )
                 self.logger.error(f"Error occurred in event listener #{self.client_id} internal loop: {error_trace}")
+                self.logger.warning(f"Retry in {retry_delay}s")
+                time.sleep(retry_delay)
+                retry_delay *= 2
 
     @abstractmethod
     def on_event(self, event: Event):  # pragma: no cover
