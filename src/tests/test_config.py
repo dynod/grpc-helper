@@ -3,9 +3,9 @@ import os
 from pathlib import Path
 
 import pytest
+from grpc_helper_api import ConfigItemUpdate, ConfigUpdate, ConfigValidator, Filter, ProxyRegisterRequest, ResultCode
 
 from grpc_helper import Folders, RpcException
-from grpc_helper.api import ConfigItemUpdate, ConfigUpdate, ConfigValidator, Filter, ProxyRegisterRequest, ResultCode
 from grpc_helper.config import Config, ConfigHolder
 from grpc_helper.config.cfg_manager import ConfigManager
 from grpc_helper.server import RpcStaticConfig

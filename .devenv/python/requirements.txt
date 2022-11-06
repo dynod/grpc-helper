@@ -1,6 +1,0 @@
-# gRPC support
-grpcio
-protobuf
-
-# Completion suppoer
-argcomplete

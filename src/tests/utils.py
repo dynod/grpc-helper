@@ -14,7 +14,7 @@ from tests.api.sample_pb2_grpc import (
     SampleServiceServicer,
     SampleServiceStub,
     add_AnotherSampleServiceServicer_to_server,
-    add_SampleServiceServicer_to_server,
+    add_SampleServiceServicer_to_server
 )
 
 

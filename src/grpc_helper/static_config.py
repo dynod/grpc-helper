@@ -1,9 +1,10 @@
-from grpc_helper.api import ConfigValidator, ResultCode
+from grpc_helper_api import ConfigValidator, ResultCode
+
 from grpc_helper.config.cfg_item import Config, ConfigHolder
 from grpc_helper.errors import RpcException
 
 # Allowed interval units
-INTERVAL_UNITS = ["S", "M", "H", "D", "MIDNIGHT"] + list(map(lambda x: f"W{x}", range(7)))
+INTERVAL_UNITS = ["S", "M", "H", "D", "MIDNIGHT"] + [f"W{x}" for x in range(7)]
 
 # Initial delay for RPC retry (seconds; doubled on each retry failure)
 RPC_RETRY_DELAY = 0.5

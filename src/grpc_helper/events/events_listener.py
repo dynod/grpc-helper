@@ -6,7 +6,8 @@ from threading import Event as ThreadEvent
 from threading import Thread
 from typing import List
 
-from grpc_helper.api import Event, EventFilter, EventInterrupt, ResultCode
+from grpc_helper_api import Event, EventFilter, EventInterrupt, ResultCode
+
 from grpc_helper.client import RpcClient
 from grpc_helper.errors import RpcException
 from grpc_helper.static_config import RPC_RETRY_DELAY

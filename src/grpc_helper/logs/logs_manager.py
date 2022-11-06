@@ -1,9 +1,10 @@
 import logging
 from pathlib import Path
-from typing import Iterable, Tuple, Union
+from typing import Generator, Tuple, Union
 
-from grpc_helper.api import Filter, LoggerConfig, LoggerLevel, LoggerStatus, LoggerUpdate, ResultCode
-from grpc_helper.api.logger_pb2_grpc import LoggerServiceServicer
+from grpc_helper_api import Filter, LoggerConfig, LoggerLevel, LoggerStatus, LoggerUpdate, ResultCode
+from grpc_helper_api.logger_pb2_grpc import LoggerServiceServicer
+
 from grpc_helper.errors import RpcException
 from grpc_helper.manager import RpcManager
 
@@ -65,7 +66,7 @@ class LogsManager(LoggerServiceServicer, RpcManager):
         # Probably a custom level; this is unknown by public API
         return LoggerLevel.LVL_UNKNOWN
 
-    def __map_loggers(self, request: Union[Filter, LoggerUpdate]) -> Iterable[Tuple[logging.Logger, LoggerConfig]]:
+    def __map_loggers(self, request: Union[Filter, LoggerUpdate]) -> Generator[Tuple[logging.Logger, LoggerConfig], None, None]:
         # Don't support empty request
         if (isinstance(request, Filter) and len(request.names) == 0) or (isinstance(request, LoggerUpdate) and len(request.items) == 0):
             raise RpcException("Empty request", rc=ResultCode.ERROR_PARAM_MISSING)
@@ -73,12 +74,11 @@ class LogsManager(LoggerServiceServicer, RpcManager):
         # Map to a tuple of (logger, config)
         if isinstance(request, Filter):
             # Provide reset config (enabled + default level)
-            return map(
-                lambda n: (self.get_logger(n), LoggerConfig(name=n, enabled=True, level=self._root_reset_level if n == "" else LoggerLevel.LVL_UNKNOWN)),
-                request.names,
-            )
+            for n in request.names:
+                yield (self.get_logger(n), LoggerConfig(name=n, enabled=True, level=self._root_reset_level if n == "" else LoggerLevel.LVL_UNKNOWN))
         else:
-            return map(lambda r: (self.get_logger(r.name), r), request.items)
+            for r in request.items:
+                yield (self.get_logger(r.name), r)
 
     def __map_logger_config(self, logger: logging.Logger) -> LoggerConfig:
         return LoggerConfig(name=logger.name, enabled=not logger.disabled, level=self.__inner_level_to_api(logger.level))

@@ -1,9 +1,10 @@
 import time
 from queue import Empty, Queue
 
+from grpc_helper_api import Empty as EmptyMessage
+from grpc_helper_api import Event, EventFilter, EventInterrupt, EventProperty, ResultCode
+
 from grpc_helper import RpcClient, RpcException
-from grpc_helper.api import Empty as EmptyMessage
-from grpc_helper.api import Event, EventFilter, EventInterrupt, EventProperty, ResultCode
 from grpc_helper.events import EventsListener
 from grpc_helper.static_config import RpcStaticConfig
 from tests.utils import TestUtils

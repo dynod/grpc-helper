@@ -4,7 +4,8 @@ import traceback
 from logging import getLogger
 from threading import current_thread
 
-from grpc_helper.api import Result, ResultCode, ResultStatus, ServiceInfo
+from grpc_helper_api import Result, ResultCode, ResultStatus, ServiceInfo
+
 from grpc_helper.client import RpcClient
 from grpc_helper.errors import RpcException
 from grpc_helper.manager import RpcManager

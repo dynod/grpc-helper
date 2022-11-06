@@ -1,4 +1,4 @@
-from grpc_helper.api import ResultCode
+from grpc_helper_api import ResultCode
 
 
 class RpcException(Exception):  # NOQA: N818

@@ -6,8 +6,8 @@ from logging import Logger, getLogger
 from typing import TypeVar, Union
 
 from grpc import RpcError, StatusCode, insecure_channel
+from grpc_helper_api import Result, ResultCode
 
-from grpc_helper.api import Result, ResultCode
 from grpc_helper.errors import RpcException
 from grpc_helper.meta import RpcMetadata
 from grpc_helper.static_config import RPC_RETRY_DELAY

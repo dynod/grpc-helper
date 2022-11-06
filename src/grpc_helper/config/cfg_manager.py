@@ -2,8 +2,9 @@ import os
 from pathlib import Path
 from typing import Dict, List
 
-from grpc_helper.api import ConfigApiVersion, ConfigItem, ConfigStatus, ConfigUpdate, Filter, ResultCode
-from grpc_helper.api.config_pb2_grpc import ConfigServiceServicer, ConfigServiceStub
+from grpc_helper_api import ConfigApiVersion, ConfigItem, ConfigStatus, ConfigUpdate, Filter, ResultCode
+from grpc_helper_api.config_pb2_grpc import ConfigServiceServicer, ConfigServiceStub
+
 from grpc_helper.client import RpcClient
 from grpc_helper.config.cfg_item import Config
 from grpc_helper.errors import RpcException
@@ -74,7 +75,7 @@ class ConfigManager(ConfigServiceServicer, RpcManager):
                     out[candidate.name] = candidate
                 else:
                     # Assume this is a ConfigHolder class: serialize all items from the holder
-                    out.update({n: i for n, i in map(lambda i: (i.name, i), candidate.all_config_items())})
+                    out.update({i.name: i for i in candidate.all_config_items()})
         return out
 
     @property
@@ -139,7 +140,7 @@ class ConfigManager(ConfigServiceServicer, RpcManager):
             raise RpcException("Unknown config item names in filter request: " + ", ".join(unknown_items), ResultCode.ERROR_ITEM_UNKNOWN)
 
     def __filter_items(self, names: List[str]) -> List[ConfigItem]:
-        return list(map(lambda x: self.user_items[x].item, filter(lambda x: x in self.user_items, names if len(names) else self.user_items.keys())))
+        return [self.user_items[x].item for x in filter(lambda x: x in self.user_items, names if len(names) else self.user_items.keys())]
 
     def __merged_items(self, names: List[str], check_conflicts: bool = False) -> Dict[str, ConfigItem]:
         # Delegate to all proxied servers + merge with local items

@@ -1,0 +1,29 @@
+refs:
+    - pip://nmk-python!plugin.yml
+    - pip://nmk-vscode!plugin.yml
+    - pip://nmk-github!plugin.yml
+    - <workspace>/shared.yml
+    - workspace:
+        local: ../../shared
+        remote: github://dynod/workspace/main/shared
+
+config:
+    # Python package name
+    pythonPackage: grpc-helper
+
+    # Python package dependencies
+    pythonPackageRequirements:
+        - grpc-helper-api
+        - argcomplete
+
+    # Extra setup data
+    pythonSetupItems:
+        metadata:
+            description: Helpers supercharging grpc features (API versioning, retry, etc...)
+
+    # Extra VSCode settings
+    vscodeSettingsItems:
+        # Extra cspell known words
+        cSpell.words:
+            - SIGUSR
+            - signum

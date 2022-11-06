@@ -1,7 +1,8 @@
 import re
 from typing import Callable, List
 
-from grpc_helper.api import ConfigItem, ConfigValidator, ResultCode
+from grpc_helper_api import ConfigItem, ConfigValidator, ResultCode
+
 from grpc_helper.errors import RpcException
 
 # Pattern for config item name

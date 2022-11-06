@@ -4,8 +4,9 @@ from queue import Queue
 from threading import Event as ThreadEvent
 from threading import Thread
 
-from grpc_helper.api import Empty, Event, EventFilter, EventInterrupt, EventQueueStatus, EventStatus, Result, ResultCode, ResultStatus
-from grpc_helper.api.events_pb2_grpc import EventServiceServicer
+from grpc_helper_api import Empty, Event, EventFilter, EventInterrupt, EventQueueStatus, EventStatus, Result, ResultCode, ResultStatus
+from grpc_helper_api.events_pb2_grpc import EventServiceServicer
+
 from grpc_helper.errors import RpcException
 from grpc_helper.folders import Folders
 from grpc_helper.manager import RpcManager

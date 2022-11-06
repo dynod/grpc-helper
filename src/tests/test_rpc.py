@@ -7,9 +7,7 @@ from pathlib import Path
 from threading import Event, Thread
 from typing import Iterable, List
 
-import grpc_helper
-from grpc_helper import Folders, RpcClient, RpcException, RpcManager, RpcServer, RpcServiceDescriptor
-from grpc_helper.api import (
+from grpc_helper_api import (
     ConfigApiVersion,
     Empty,
     Filter,
@@ -19,9 +17,12 @@ from grpc_helper.api import (
     ResultCode,
     ResultStatus,
     ServerApiVersion,
-    ShutdownRequest,
+    ShutdownRequest
 )
-from grpc_helper.api.events_pb2 import EventApiVersion
+from grpc_helper_api.events_pb2 import EventApiVersion
+
+import grpc_helper
+from grpc_helper import Folders, RpcClient, RpcException, RpcManager, RpcServer, RpcServiceDescriptor
 from tests.api import SampleApiVersion, SampleRequest, SampleResponse
 from tests.api.sample_pb2_grpc import SampleServiceServicer, SampleServiceStub, add_SampleServiceServicer_to_server
 from tests.utils import TestUtils

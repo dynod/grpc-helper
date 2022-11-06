@@ -13,11 +13,9 @@ from typing import Callable, Dict, List, NoReturn, TypeVar, Union
 
 from google.protobuf.internal.enum_type_wrapper import EnumTypeWrapper
 from grpc import Server, insecure_channel, server
-
-import grpc_helper
-from grpc_helper.api import ConfigApiVersion
-from grpc_helper.api import Event as RpcEvent
-from grpc_helper.api import (
+from grpc_helper_api import ConfigApiVersion
+from grpc_helper_api import Event as RpcEvent
+from grpc_helper_api import (
     EventApiVersion,
     EventProperty,
     Filter,
@@ -29,12 +27,14 @@ from grpc_helper.api import (
     ResultStatus,
     ServerApiVersion,
     ServiceInfo,
-    ShutdownRequest,
+    ShutdownRequest
 )
-from grpc_helper.api.config_pb2_grpc import ConfigServiceStub, add_ConfigServiceServicer_to_server
-from grpc_helper.api.events_pb2_grpc import EventServiceStub, add_EventServiceServicer_to_server
-from grpc_helper.api.logger_pb2_grpc import LoggerServiceStub, add_LoggerServiceServicer_to_server
-from grpc_helper.api.server_pb2_grpc import RpcServerServiceServicer, RpcServerServiceStub, add_RpcServerServiceServicer_to_server
+from grpc_helper_api.config_pb2_grpc import ConfigServiceStub, add_ConfigServiceServicer_to_server
+from grpc_helper_api.events_pb2_grpc import EventServiceStub, add_EventServiceServicer_to_server
+from grpc_helper_api.logger_pb2_grpc import LoggerServiceStub, add_LoggerServiceServicer_to_server
+from grpc_helper_api.server_pb2_grpc import RpcServerServiceServicer, RpcServerServiceStub, add_RpcServerServiceServicer_to_server
+
+import grpc_helper
 from grpc_helper.client import RpcClient
 from grpc_helper.config.cfg_item import Config
 from grpc_helper.config.cfg_manager import ConfigManager
@@ -385,7 +385,7 @@ class RpcServer(RpcServerServiceServicer, RpcManager):
     def __check_service_names(self, request: Union[ProxyRegisterRequest, Filter]) -> List[ServiceInfo]:
         if any(n not in self.__info for n in request.names):
             raise RpcException("At least one of the required service names is unknown", ResultCode.ERROR_ITEM_UNKNOWN)
-        return list(map(lambda n: self.__info[n], request.names))
+        return [self.__info[n] for n in request.names]
 
     def __check_proxy_names(self, request: Union[ProxyRegisterRequest, Filter]) -> List[ServiceInfo]:
         # Verify input proxy names

@@ -5,9 +5,10 @@ from pathlib import Path
 from threading import RLock
 from typing import Callable, List, Set, Tuple
 
-from grpc_helper.api import EventApiVersion, Filter, ProxyRegisterRequest, ResultCode, ServerApiVersion
-from grpc_helper.api.events_pb2_grpc import EventServiceStub
-from grpc_helper.api.server_pb2_grpc import RpcServerServiceStub
+from grpc_helper_api import EventApiVersion, Filter, ProxyRegisterRequest, ResultCode, ServerApiVersion
+from grpc_helper_api.events_pb2_grpc import EventServiceStub
+from grpc_helper_api.server_pb2_grpc import RpcServerServiceStub
+
 from grpc_helper.client import RpcClient
 from grpc_helper.errors import RpcException
 from grpc_helper.folders import Folders

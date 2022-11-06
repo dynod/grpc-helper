@@ -3,8 +3,9 @@ import logging
 import os
 import time
 
+from grpc_helper_api import Filter, LoggerConfig, LoggerLevel, LoggerUpdate, ResultCode
+
 from grpc_helper import RpcException
-from grpc_helper.api import Filter, LoggerConfig, LoggerLevel, LoggerUpdate, ResultCode
 from tests.utils import TestUtils
 
 
@@ -197,5 +198,5 @@ class TestLogs(TestUtils):
 
         # Verify several logs files are generated
         log_files = list((self.workspace_path / "logs" / "LogsManager").glob("LogsManager.log*"))
-        logging.debug("Found log files:\n" + "\n".join(map(lambda p: p.as_posix(), log_files)))
+        logging.debug("Found log files:\n" + "\n".join(p.as_posix() for p in log_files))
         assert len(log_files) >= 3
