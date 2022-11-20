@@ -7,6 +7,7 @@ from pathlib import Path
 from argcomplete.completers import DirectoriesCompleter
 
 from grpc_helper.folders import Folders
+from grpc_helper.utils import is_windows
 
 # Config item parameter syntax
 CONFIG_ITEM_DEF_PATTERN = re.compile("([a-z][a-z0-9-]*)=(.*)")
@@ -60,9 +61,10 @@ class RpcCliParser:
     def parser(self) -> ArgumentParser:
         return self.__parser
 
-    def with_rpc_args(
-        self, default_port: int = 54321, default_sys: str = "/etc/grpc_helper", default_usr: str = "~/.config/grpc_helper", default_wks: str = "./grpc_helper"
-    ):
+    def with_rpc_args(self, default_port: int = 54321, default_sys: str = None, default_usr: str = "~/.config/grpc_helper", default_wks: str = "./grpc_helper"):
+        # Default values depend on system type
+        default_sys = default_sys if default_sys is not None else ("C:\\grpc_helper" if is_windows() else "/etc/grpc_helper")
+
         # Folders
         self.parser.add_argument(
             "--system", type=expanded_path, action="store", default=expanded_path(default_sys), help=f"Override system folder (default: {default_sys})"

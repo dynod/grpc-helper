@@ -17,11 +17,21 @@ from tests.api.sample_pb2_grpc import (
     add_SampleServiceServicer_to_server
 )
 
+# Port Offset for proxy/2nd server
+PORT_OFFSET = 300
+
 
 class TestUtils(TestHelper):
+    # In order to get a brand-new RPC port for each new test
+    next_rpc_port = 0
+
     @property
     def rpc_port(self) -> int:
-        return 52100 + self.worker_index
+        if not hasattr(self, "_instance_rpc_port"):
+            assert TestUtils.next_rpc_port < PORT_OFFSET
+            self._instance_rpc_port = 50000 + (1000 * self.worker_index) + TestUtils.next_rpc_port
+            TestUtils.next_rpc_port += 1
+        return self._instance_rpc_port
 
     @property
     def workspace_path(self) -> Path:
@@ -75,7 +85,7 @@ class TestUtils(TestHelper):
 
     @property
     def proxy_port(self) -> int:
-        return self.rpc_port + 50
+        return self.rpc_port + PORT_OFFSET
 
     def new_proxy_server(self):
         self.proxy_server = RpcServer(
@@ -122,7 +132,7 @@ class TestUtils(TestHelper):
 
     @property
     def rpc_another_port(self) -> int:
-        return self.rpc_port + 100
+        return self.rpc_port + 2 * PORT_OFFSET
 
     def start_another_server(self, use_ip: bool):
         return RpcServer(

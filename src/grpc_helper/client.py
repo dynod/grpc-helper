@@ -11,7 +11,7 @@ from grpc_helper_api import Result, ResultCode
 from grpc_helper.errors import RpcException
 from grpc_helper.meta import RpcMetadata
 from grpc_helper.static_config import RPC_RETRY_DELAY
-from grpc_helper.utils import get_current_ip, is_streaming, trace_rpc
+from grpc_helper.utils import get_current_ip, is_streaming, is_windows, trace_rpc
 
 
 class RetryMethod:
@@ -62,14 +62,14 @@ class RetryStreamingMethod(RetryMethod):
         while True:
             try:
                 # Call real stub method, with metadata
-                for result in getattr(self.stub, self.m_name)(request, metadata=self.metadata.as_tuple()):
+                for result in getattr(self.stub, self.m_name)(request, metadata=self.metadata.as_tuple()):  # pragma: no branch
                     retry_delay = RPC_RETRY_DELAY
                     self.logger.debug(trace_rpc(False, result, context=self.metadata, method=f"{self.s_name}.{self.m_name}"))
 
                     # May raise an exception...
                     self.raise_result(result)
                     yield result
-                break
+                break  # pragma: no cover
             except RpcError as e:
                 self.handle_exception(trace, first_try, e, retry_delay)
                 retry_delay *= 2
@@ -171,10 +171,10 @@ class RpcClient:
         self.logger.debug(f"RPC client ready for {self.target_host}")
 
     def get_user(self):
-        if os.name == "posix":
-            # Resolve user
-            uid = os.getuid()
-            try:
+        if not is_windows():
+            # Resolve user (no coverage, as platform specific)
+            uid = os.getuid()  # pragma: no cover
+            try:  # pragma: no cover
                 # Try from pwd
                 import pwd
 
@@ -182,7 +182,7 @@ class RpcClient:
             except Exception:  # pragma: no cover
                 # Not in pwd database, just keep UID
                 user = f"{uid}"
-            return user
+            return user  # pragma: no cover
 
         # Otherwise, just get login
         return os.getlogin()  # pragma: no cover

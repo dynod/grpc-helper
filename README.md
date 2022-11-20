@@ -1,6 +1,9 @@
 # grpc-helper
 
-![Tests](https://github.com/dynod/grpc-helper/workflows/Tests/badge.svg)
+[![License: MPL](https://img.shields.io/github/license/dynod/grpc-helper)](https://github.com/dynod/grpc-helper/blob/main/LICENSE)
+[![Checks](https://img.shields.io/github/workflow/status/dynod/grpc-helper/Build/main?label=build%20%26%20u.t.)](https://github.com/dynod/grpc-helper/actions?query=branch%3Amain)
+[![PyPI](https://img.shields.io/pypi/v/grpc-helper)](https://pypi.org/project/grpc-helper-api/)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 Miscellaneous GRPC helpers (API versioning, retry, config, etc...)
 

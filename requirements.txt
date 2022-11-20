@@ -19,10 +19,13 @@ flake8-pep3101
 flake8-bugbear
 setuptools
 wheel
+grpcio
+protobuf
 grpc-helper-api
 argcomplete
 pytest-xdist
 pytest-cov
 pytest-multilog
+grpcio-tools
 
 
