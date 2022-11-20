@@ -46,7 +46,7 @@ class EventsListener(ABC):
         retry_delay = RPC_RETRY_DELAY
         while True:
             try:
-                for s in self.client.events.listen(EventFilter(client_id=self.client_id, names=self.names)):
+                for s in self.client.events.listen(EventFilter(client_id=self.client_id, names=self.names)):  # pragma: no branch
                     # Success, restore retry delay
                     retry_delay = RPC_RETRY_DELAY
 
@@ -63,7 +63,7 @@ class EventsListener(ABC):
                         self.logger.debug(f"<< Event listener #{self.client_id} on_event({s.event.name})")
 
                 # Listen loop normal exit: listening was interrupted
-                break
+                break  # pragma: no cover
             except Exception as e:
                 error_trace = (
                     "event service restarting"

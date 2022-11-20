@@ -2,7 +2,7 @@
 Sample test API based
 */
 syntax = "proto3";
-import "grpc_helper/api/common.proto";
+import "grpc_helper_api/common.proto";
 
 /*
 API versions:

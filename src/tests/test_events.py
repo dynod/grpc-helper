@@ -138,8 +138,14 @@ class TestEvents(TestUtils):
         # Expects no status
         assert len(self.flush_queue(listener.rec_queue)) == 0
 
+        # Make sure the listening service has been interrupted
+        self.check_logs("Event listening queue #1 interrupted", timeout=10)
+
         # Restart service
         self.new_server_instance()
+
+        # Make sure listening has resumed
+        self.check_logs("Resuming interrupted event listening queue #1", timeout=10)
 
         # Send event
         client.events.send(Event(name="some-event"))

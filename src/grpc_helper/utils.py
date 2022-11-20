@@ -1,3 +1,4 @@
+import os
 import socket
 from pathlib import Path
 
@@ -53,3 +54,7 @@ def get_current_ip(default: str = "127.0.0.1"):
     finally:
         s.close()
     return out
+
+
+def is_windows() -> bool:
+    return os.name == "nt"

@@ -30,7 +30,13 @@
         "sdist",
         "venv",
         "loadme",
+        "proto",
+        "protos",
+        "protoc",
+        "protobuf",
+        "grpcio",
         "dynod",
+        "nmk",
         "SIGUSR",
         "signum"
     ],
@@ -43,5 +49,19 @@
     },
     "editor.formatOnSave": true,
     "task.allowAutomaticTasks": "on",
-    "terminal.integrated.defaultProfile.windows": "Git Bash"
+    "terminal.integrated.defaultProfile.windows": "Git Bash",
+    "protoc": {
+        "options": [
+            "--proto_path",
+            "protos",
+            "--proto_path",
+            ".nmk/protos"
+        ]
+    },
+    "cSpell.enableFiletypes": [
+        "proto3",
+        "yaml",
+        "python"
+    ],
+    "cSpell.allowCompoundWords": true
 }

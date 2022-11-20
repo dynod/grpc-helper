@@ -1,18 +1,20 @@
 import os
 from argparse import ArgumentTypeError
+from pathlib import Path
 
 from pytest_multilog import TestHelper
 
 from grpc_helper import RpcCliParser
+from grpc_helper.utils import is_windows
 
 
 class TestCli(TestHelper):
     def test_default_params(self):
         # Parser with default parameters
         args = RpcCliParser("Some description", version="1.0.0").with_rpc_args().parse([])
-        assert str(args.folders.system) == "/etc/grpc_helper"
-        assert str(args.folders.user) == f"{os.environ['HOME']}/.config/grpc_helper"
-        assert str(args.folders.workspace) == "grpc_helper"
+        assert args.folders.system == Path("C:\\grpc_helper" if is_windows() else "/etc/grpc_helper")
+        assert args.folders.user == Path(os.environ["HOME"]) / ".config" / "grpc_helper"
+        assert args.folders.workspace == Path("grpc_helper")
         assert args.port == 54321
         assert len(args.config) == 0
 

@@ -136,7 +136,7 @@ class EventsManager(EventServiceServicer, RpcManager):
 
         # Forget queue
         with self.lock:
-            # Remember interupt time
+            # Remember interrupt time
             interrupt_time = time.time()
             self.__interrupt_times[index] = interrupt_time
             self.logger.info(f"Event listening queue #{index} interrupted")

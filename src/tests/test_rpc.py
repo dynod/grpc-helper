@@ -23,6 +23,7 @@ from grpc_helper_api.events_pb2 import EventApiVersion
 
 import grpc_helper
 from grpc_helper import Folders, RpcClient, RpcException, RpcManager, RpcServer, RpcServiceDescriptor
+from grpc_helper.utils import is_windows
 from tests.api import SampleApiVersion, SampleRequest, SampleResponse
 from tests.api.sample_pb2_grpc import SampleServiceServicer, SampleServiceStub, add_SampleServiceServicer_to_server
 from tests.utils import TestUtils
@@ -88,6 +89,10 @@ class TestRpcServer(TestUtils):
         assert s.r.msg == "Found info count: 5"
 
     def test_debug_dump(self, client):
+        # Can't test on Windows (no signal)
+        if is_windows():
+            return
+
         # Tweak servicer to send debug signal to serving process
         self.servicer.wait_a_bit = True
 
@@ -208,7 +213,7 @@ class TestRpcServer(TestUtils):
 
     def test_no_server_timeout(self):
         # Same as above, with timeout
-        c = RpcClient("127.0.0.1", 1, {"sample": (SampleServiceStub, SampleApiVersion.SAMPLE_API_CURRENT)}, timeout=1)
+        c = RpcClient("127.0.0.1", 1, {"sample": (SampleServiceStub, SampleApiVersion.SAMPLE_API_CURRENT)}, timeout=5)
         try:
             c.sample.method1(Empty())
             raise AssertionError("Shouldn't get there")
@@ -216,7 +221,7 @@ class TestRpcServer(TestUtils):
             assert e.rc == ResultCode.ERROR_RPC
 
         # Verify we retried at least one time
-        self.check_logs("(will retry in 0.5s because of 'unavailable' error; details: 'failed to connect to all addresses')")
+        self.check_logs("(will retry in 0.5s because of 'unavailable' error; details: 'failed to connect to all addresses")
 
     def test_not_implemented(self, client):
         # Not implemented call

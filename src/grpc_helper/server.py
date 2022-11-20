@@ -1,7 +1,6 @@
 import faulthandler
 import inspect
 import logging
-import os
 import signal
 import time
 import traceback
@@ -46,7 +45,7 @@ from grpc_helper.logs.logs_utils import add_rotating_handler, clean_rotating_han
 from grpc_helper.manager import RpcManager
 from grpc_helper.methods import RpcSimpleMethod, RpcStreamingMethod
 from grpc_helper.static_config import RpcStaticConfig
-from grpc_helper.utils import is_streaming, trace_buffer
+from grpc_helper.utils import is_streaming, is_windows, trace_buffer
 
 # Config file name
 PROXY_FILE = "proxy.json"
@@ -246,8 +245,8 @@ class RpcServer(RpcServerServiceServicer, RpcManager):
         self.logger.debug(f"RPC server started on port {self.__port}")
 
         # Hook debug signal if required
-        if with_debug_signal and os.name == "posix":
-            signal.signal(signal.SIGUSR2, self.__dump_debug)
+        if with_debug_signal and not is_windows():
+            signal.signal(signal.SIGUSR2, self.__dump_debug)  # pragma: no cover
 
         # Load all managers (including client pointing to all served services)
         to_raise = None
@@ -283,8 +282,9 @@ class RpcServer(RpcServerServiceServicer, RpcManager):
         """
 
         # Prepare debug output
-        output = self._log_folder / f"RpcServerDump-{time.strftime('%Y%m%d%H%M%S')}.txt"
-        with output.open("w") as f:
+        # No coverage, as platform specific
+        output = self._log_folder / f"RpcServerDump-{time.strftime('%Y%m%d%H%M%S')}.txt"  # pragma: no cover
+        with output.open("w") as f:  # pragma: no cover
             # Dump threads
             faulthandler.dump_traceback(f, all_threads=True)
 
