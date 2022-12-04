@@ -220,3 +220,17 @@ class TestEvents(TestUtils):
 
         # But keep alive event has been received
         self.check_logs("<<< EventService.listen: EventStatus{event { } client_id: 1 }")
+
+    def test_bad_client_id(self, client):
+        # Start listening with unknown ID
+        listener = self.start_listening(client, 123)
+        listener.ready.wait()
+
+        # New client ID has been generated
+        assert listener.client_id != 123
+
+        # Interrupt
+        listener.interrupt()
+
+        # No event received
+        assert len(self.flush_queue(listener.rec_queue)) == 0

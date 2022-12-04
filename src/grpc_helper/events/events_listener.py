@@ -65,6 +65,13 @@ class EventsListener(ABC):
                 # Listen loop normal exit: listening was interrupted
                 break  # pragma: no cover
             except Exception as e:
+                # Maybe the client ID is unknown
+                if isinstance(e, RpcException) and e.rc == ResultCode.ERROR_ITEM_UNKNOWN and self.client_id is not None:
+                    self.logger.warning(f"Event listening ID #{self.client_id} is unknown, ask for a new one")
+                    self.client_id = None
+                    continue
+
+                # Other error handling
                 error_trace = (
                     "event service restarting"
                     if isinstance(e, RpcException) and e.rc == ResultCode.ERROR_STREAM_SHUTDOWN
