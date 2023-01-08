@@ -63,6 +63,7 @@ class EventsListener(ABC):
                         self.logger.debug(f"<< Event listener #{self.client_id} on_event({s.event.name})")
 
                 # Listen loop normal exit: listening was interrupted
+                self.logger.debug(f"Event listener #{self.client_id}: end of listening loop")
                 break  # pragma: no cover
             except Exception as e:
                 # Maybe the client ID is unknown
@@ -95,5 +96,5 @@ class EventsListener(ABC):
         """
         self.logger.debug(f">> Interrupting event listener #{self.client_id}")
         self.client.events.interrupt(EventInterrupt(client_id=self.client_id))
-        self.listening_t.join()
-        self.logger.debug(f"<< Interrupting event listener #{self.client_id}")
+        self.listening_t.join(30)  # Join with timeout, to avoid to be frozen; this already happened...
+        self.logger.debug(f"<< Interrupting event listener #{self.client_id} (thread still running: {self.listening_t.is_alive()})")
