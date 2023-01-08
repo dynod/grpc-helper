@@ -37,6 +37,7 @@
         "grpcio",
         "dynod",
         "nmk",
+        "pypi",
         "SIGUSR",
         "signum"
     ],
