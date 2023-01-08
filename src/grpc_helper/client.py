@@ -53,7 +53,7 @@ class RetryMethod:
 
 
 class RetryStreamingMethod(RetryMethod):
-    def __call__(self, request):
+    def __call__(self, request, timeout: float = None):
         # Call prelude
         trace, first_try = self.prelude(request)
         retry_delay = RPC_RETRY_DELAY
@@ -62,7 +62,7 @@ class RetryStreamingMethod(RetryMethod):
         while True:
             try:
                 # Call real stub method, with metadata
-                for result in getattr(self.stub, self.m_name)(request, metadata=self.metadata.as_tuple()):  # pragma: no branch
+                for result in getattr(self.stub, self.m_name)(request, metadata=self.metadata.as_tuple(), timeout=timeout):  # pragma: no branch
                     retry_delay = RPC_RETRY_DELAY
                     self.logger.debug(trace_rpc(False, result, context=self.metadata, method=f"{self.s_name}.{self.m_name}"))
 
@@ -76,7 +76,7 @@ class RetryStreamingMethod(RetryMethod):
 
 
 class RetrySimpleMethod(RetryMethod):
-    def __call__(self, request):
+    def __call__(self, request, timeout: float = None):
         # Call prelude
         trace, first_try = self.prelude(request)
         retry_delay = RPC_RETRY_DELAY
@@ -85,7 +85,7 @@ class RetrySimpleMethod(RetryMethod):
         while True:
             try:
                 # Call real stub method, with metadata
-                result = getattr(self.stub, self.m_name)(request, metadata=self.metadata.as_tuple())
+                result = getattr(self.stub, self.m_name)(request, metadata=self.metadata.as_tuple(), timeout=timeout)
                 self.logger.debug(trace_rpc(False, result, context=self.metadata, method=f"{self.s_name}.{self.m_name}"))
 
                 # May raise an exception...

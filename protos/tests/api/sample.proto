@@ -34,7 +34,10 @@ service SampleService {
     rpc method2 (Empty) returns (ResultStatus);
     rpc method3 (Empty) returns (ResultStatus);
     rpc method4 (SampleRequest) returns (SampleResponse);
-    
+
+    // Long running method (for timeout tests)
+    rpc long_method (Empty) returns (ResultStatus);
+
     // Streaming methods
     rpc s_method1 (stream SampleRequest) returns (ResultStatus);
     rpc s_method2 (SampleRequest) returns (stream ResultStatus);

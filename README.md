@@ -186,6 +186,11 @@ Optional inputs can also be provided:
 * a boolean flag stating if the client shall raise exceptions when receiving non-OK **`ResultCode`** status (default: **true**)
 * an exception type to be raised (instead of **`RpcException`**) when receiving non-OK **`ResultCode`** status
 
+Once created, a client instance provide as many stubs as configured in the service map. Each of this stubs expose the generated methods of the 
+corresponding service. These methods take the following arguments:
+* the method input request message (see corresponding proto file)
+* a timeout parameter (in seconds) for this particular request. If set to None (default), there is no timeout
+
 #### Usage example
 
 ```python
