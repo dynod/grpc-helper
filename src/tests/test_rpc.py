@@ -75,6 +75,12 @@ class SampleServicer(SampleServiceServicer, RpcManager):
                 raise RpcException("Sample error occurred", rc=ResultCode.ERROR_PARAM_INVALID)
             yield ResultStatus(r=Result(msg=foo))
 
+    def long_method(self, request: Empty) -> ResultStatus:
+        self.logger.info(">> long_method")
+        time.sleep(10)
+        self.logger.info("<< long_method")
+        return ResultStatus()
+
 
 class TestRpcServer(TestUtils):
     @property
@@ -139,6 +145,14 @@ class TestRpcServer(TestUtils):
             raise AssertionError("Shouldn't get here")
         except RpcException as e:
             assert e.rc == 12
+
+    def test_client_timeout(self, client):
+        # Try call with timeout
+        try:
+            client.sample.long_method(Empty(), timeout=1)
+            raise AssertionError("Shouldn't get here")
+        except RpcException as e:
+            assert e.rc == ResultCode.ERROR_RPC
 
     def test_server_busy(self, sample_server):
         try:
