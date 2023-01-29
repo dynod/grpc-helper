@@ -1,10 +1,15 @@
 # grpc-helper
 
 <!-- NMK-BADGES-BEGIN -->
-[![License: MPL](https://img.shields.io/github/license/dynod/grpc-helper)](https://github.com/dynod/grpc-helper/blob/main/LICENSE)
+[![License: MPL](https://img.shields.io/github/license/dynod/grpc-helper?color=green)](https://github.com/dynod/grpc-helper/blob/main/LICENSE)
 [![Checks](https://img.shields.io/github/actions/workflow/status/dynod/grpc-helper/build.yml?branch=main&label=build%20%26%20u.t.)](https://github.com/dynod/grpc-helper/actions?query=branch%3Amain)
+[![Issues](https://img.shields.io/github/issues-search/dynod/grpc-helper?label=issues&query=is%3Aopen+is%3Aissue)](https://github.com/dynod/grpc-helper/issues?q=is%3Aopen+is%3Aissue)
+[![Supported python versions](https://img.shields.io/badge/python-3.8%20--%203.11-blue)](https://www.python.org/)
 [![PyPI](https://img.shields.io/pypi/v/grpc-helper)](https://pypi.org/project/grpc-helper/)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Flake8 analysis result](https://img.shields.io/badge/flake8-0-green)](https://flake8.pycqa.org/)
+[![Code coverage](https://img.shields.io/codecov/c/github/dynod/grpc-helper)](https://app.codecov.io/gh/dynod/grpc-helper)
+[![Code generated for GRPC framework](https://img.shields.io/badge/code%20generation-proto-blue)](https://protobuf.dev/)
 <!-- NMK-BADGES-END -->
 
 Miscellaneous GRPC helpers (API versioning, retry, config, etc...)

@@ -31,3 +31,6 @@ config:
         cSpell.words:
             - SIGUSR
             - signum
+
+    # Disable test generated code check
+    protoDisableCheck: true

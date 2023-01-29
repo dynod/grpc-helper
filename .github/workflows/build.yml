@@ -18,20 +18,21 @@ jobs:
                     - "3.8"
                     - "3.9"
                     - "3.10"
+                    - "3.11"
                 command:
                     - source loadme.sh nmk tests
         runs-on: ${{ matrix.os }}
         steps:
             # Checkout, with all submodules
             - name: Checkout
-              uses: actions/checkout@v2.4.0
+              uses: actions/checkout@v3.3.0
               with:
                   fetch-depth: 0
                   submodules: recursive
 
             # Setup python
             - name: Set up Python ${{ matrix.version }}
-              uses: actions/setup-python@v3.0.0
+              uses: actions/setup-python@v4.4.0
               with:
                   python-version: ${{ matrix.version }}
 
@@ -45,7 +46,7 @@ jobs:
             # Archive outputs (depending on build step)
             - name: Archive the whole output (on failure)
               if: steps.build_n_tests.outcome == 'failure'
-              uses: actions/upload-artifact@v2.3.1
+              uses: actions/upload-artifact@v3.1.2
               with:
                   name: Outputs-${{ matrix.os }}-${{ matrix.version }}
                   path: |
@@ -53,18 +54,24 @@ jobs:
                     out/
             - name: Build Failed!
               if: steps.build_n_tests.outcome == 'failure'
-              uses: actions/github-script@v3
+              uses: actions/github-script@v6.3.3
               with:
                 script: |
                     core.setFailed('Previous step failed')
             - name: Archive artifacts (on success)
-              uses: actions/upload-artifact@v2.3.1
+              uses: actions/upload-artifact@v3.1.2
               with:
                   name: Outputs-${{ matrix.os }}-${{ matrix.version }}
                   path: |
                     .nmk/nmk.log*
                     out/
                     !out/tests/
+
+            - name: Upload coverage information
+              uses: codecov/codecov-action@v3.1.1
+              with: {'files': 'out/coverage.xml'}
+              
+
 
     # Only on tags push
     publish:
@@ -74,21 +81,18 @@ jobs:
         steps:
             # Official build
             - name: Checkout
-              uses: actions/checkout@v2.4.0
+              uses: actions/checkout@v3.3.0
               with:
                   fetch-depth: 0
                   submodules: recursive
             - name: Set up Python
-              uses: actions/setup-python@v3.0.0
+              uses: actions/setup-python@v4.4.0
               with:
                   python-version: "3.8"
             - name: Build
               run: source loadme.sh nmk build
 
-            # Publish to Pypi
-            - name: Publish package
+            - name: Publish package on pypi.org
               uses: pypa/gh-action-pypi-publish@v1.5.0
-              with:
-                  user: __token__
-                  password: ${{ secrets.pypi_password }}
-                  packages_dir: out/artifacts
+              with: {'user': '__token__', 'password': '${{ secrets.pypi_password }}', 'packages_dir': 'out/artifacts'}
+              
